@@ -3639,6 +3639,25 @@ CINDEX_LINKAGE CXString clang_Cursor_getBriefCommentText(CXCursor C);
  * @}
  */
 
+/** \defgroup CINDEX_MANGLE Name Mangling API Functions
+ *
+ * @{
+ */
+
+/**
+ * \brief Represents the different available ABIs for name mangling.
+ */
+typedef enum { CXMangleABI_Itanium = 0, CXMangleABI_Microsoft = 1 } CXMangleABI;
+
+/**
+ * \brief Retrieve the CXString representing the mangled name of the cursor.
+ */
+CINDEX_LINKAGE CXString clang_Cursor_getMangling(CXCursor, CXMangleABI);
+
+/**
+ * @}
+ */
+
 /**
  * \defgroup CINDEX_MODULE Module introspection
  *

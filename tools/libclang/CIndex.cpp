@@ -22,6 +22,7 @@
 #include "CXType.h"
 #include "CursorVisitor.h"
 #include "clang/AST/Attr.h"
+#include "clang/AST/Mangle.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticCategories.h"
@@ -3665,6 +3666,37 @@ CXSourceRange clang_Cursor_getSpellingNameRange(CXCursor C,
   CXSourceLocation CXLoc = clang_getCursorLocation(C);
   SourceLocation Loc = cxloc::translateSourceLocation(CXLoc);
   return cxloc::translateSourceRange(Ctx, Loc);
+}
+
+CXString clang_Cursor_getMangling(CXCursor C, CXMangleABI ABI) {
+  if (clang_isInvalid(C.kind) || !clang_isDeclaration(C.kind))
+    return cxstring::createEmpty();
+
+  const Decl *D = getCursorDecl(C);
+  // Mangling only works for functions and variables.
+  if (!D || !(llvm::isa<FunctionDecl>(D) || llvm::isa<VarDecl>(D)))
+    return cxstring::createEmpty();
+
+  const NamedDecl *ND = llvm::cast<NamedDecl>(D);
+  ASTContext &Context = ND->getASTContext();
+  std::unique_ptr<MangleContext> MC;
+
+  switch (ABI) {
+  default:
+    llvm_unreachable("Unknown mangling ABI");
+    break;
+  case CXMangleABI_Itanium:
+    MC.reset(ItaniumMangleContext::create(Context, Context.getDiagnostics()));
+    break;
+  case CXMangleABI_Microsoft:
+    MC.reset(MicrosoftMangleContext::create(Context, Context.getDiagnostics()));
+    break;
+  }
+
+  std::string Buf;
+  llvm::raw_string_ostream OS(Buf);
+  MC->mangleName(ND, OS);
+  return cxstring::createDup(OS.str());
 }
 
 CXString clang_getCursorDisplayName(CXCursor C) {
