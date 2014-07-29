@@ -3,11 +3,11 @@
 
 int foo(int, int);
 // ITANIUM: mangled=_Z3fooii
-// MICROSOFT: mangled={{.*}}foo@@YAHHH
+// MICROSOFT: mangled=?foo@@YAHHH
 
 int foo(float, int);
 // ITANIUM: mangled=_Z3foofi
-// MICROSOFT: mangled={{.*}}foo@@YAHMH
+// MICROSOFT: mangled=?foo@@YAHMH
 
 struct S {
   int x, y;
@@ -17,4 +17,4 @@ struct S {
 
 int foo(S, S&);
 // ITANIUM: mangled=_Z3foo1SRS
-// MICROSOFT: mangled={{.*}}foo@@YAHUS
+// MICROSOFT: mangled=?foo@@YAHUS

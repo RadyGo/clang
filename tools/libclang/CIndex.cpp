@@ -3696,7 +3696,14 @@ CXString clang_Cursor_getMangling(CXCursor C, CXMangleABI ABI) {
   std::string Buf;
   llvm::raw_string_ostream OS(Buf);
   MC->mangleName(ND, OS);
-  return cxstring::createDup(OS.str());
+  OS.flush();
+
+  // The Microsoft mangler may insert a special character in the beginning to
+  // prevent further mangling. We can strip that for display purposes.
+  if (Buf[0] == '\x01') {
+    Buf.erase(0, 1);
+  }
+  return cxstring::createDup(Buf);
 }
 
 CXString clang_getCursorDisplayName(CXCursor C) {
