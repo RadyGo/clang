@@ -1366,12 +1366,22 @@ static enum CXChildVisitResult PrintTypeSize(CXCursor cursor, CXCursor p,
 /* Mangling testing.                                                          */
 /******************************************************************************/
 
-static enum CXChildVisitResult PrintMangledName(CXCursor cursor, CXCursor p,
-                                                CXClientData d) {
+static void PrintMangledName(CXCursor cursor, CXMangleABI ABI) {
   CXString MangledName;
   PrintCursor(cursor, NULL);
-  MangledName = clang_Cursor_getMangling(cursor, CXMangleABI_Itanium);
+  MangledName = clang_Cursor_getMangling(cursor, ABI);
   printf(" [mangled=%s]\n", clang_getCString(MangledName));
+}
+
+static enum CXChildVisitResult PrintMangleItanium(CXCursor cursor, CXCursor p,
+                                                  CXClientData d) {
+  PrintMangledName(cursor, CXMangleABI_Itanium);
+  return CXChildVisit_Continue;
+}
+
+static enum CXChildVisitResult PrintMangleMicrosoft(CXCursor cursor, CXCursor p,
+                                                    CXClientData d) {
+  PrintMangledName(cursor, CXMangleABI_Microsoft);
   return CXChildVisit_Continue;
 }
 
@@ -4094,9 +4104,12 @@ int cindextest_main(int argc, const char **argv) {
   else if (argc > 2 && strcmp(argv[1], "-test-print-bitwidth") == 0)
     return perform_test_load_source(argc - 2, argv + 2, "all",
                                     PrintBitWidth, 0);
-  else if (argc > 2 && strcmp(argv[1], "-test-print-mangled-name") == 0)
+  else if (argc > 2 && strcmp(argv[1], "-test-print-mangle-itanium") == 0)
     return perform_test_load_source(argc - 2, argv + 2, "all",
-                                    PrintMangledName, 0);
+                                    PrintMangleItanium, 0);
+  else if (argc > 2 && strcmp(argv[1], "-test-print-mangle-microsoft") == 0)
+    return perform_test_load_source(argc - 2, argv + 2, "all",
+                                    PrintMangleMicrosoft, 0);
   else if (argc > 1 && strcmp(argv[1], "-print-usr") == 0) {
     if (argc > 2)
       return print_usrs(argv + 2, argv + argc);
