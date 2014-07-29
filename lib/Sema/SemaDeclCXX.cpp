@@ -13029,7 +13029,7 @@ Sema::CUDAFunctionTarget Sema::IdentifyCUDATarget(const FunctionDecl *D) {
   // Implicitly declared functions (e.g. copy constructors) are
   // __host__ __device__
   if (D->isImplicit())
-    return CFT_Host;
+    return CFT_HostDevice;
 
   if (D->hasAttr<CUDAGlobalAttr>())
     return CFT_Global;
