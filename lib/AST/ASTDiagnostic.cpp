@@ -1076,6 +1076,7 @@ class TemplateDiff {
         Tree.SetSame(
             FromDecl && ToDecl &&
             FromDecl->getCanonicalDecl() == ToDecl->getCanonicalDecl());
+        Tree.SetDefault(FromIter.isEnd() && FromDecl, ToIter.isEnd() && ToDecl);
         Tree.SetKind(DiffTree::TemplateTemplate);
       }
 
@@ -1290,11 +1291,8 @@ class TemplateDiff {
     if (!FromExpr || !ToExpr)
       return false;
 
-    FromExpr = FromExpr->IgnoreParens();
-    ToExpr = ToExpr->IgnoreParens();
-
-    DeclRefExpr *FromDRE = dyn_cast<DeclRefExpr>(FromExpr),
-                *ToDRE = dyn_cast<DeclRefExpr>(ToExpr);
+    DeclRefExpr *FromDRE = dyn_cast<DeclRefExpr>(FromExpr->IgnoreParens()),
+                *ToDRE = dyn_cast<DeclRefExpr>(ToExpr->IgnoreParens());
 
     if (FromDRE || ToDRE) {
       if (!FromDRE || !ToDRE)
@@ -1304,8 +1302,12 @@ class TemplateDiff {
 
     Expr::EvalResult FromResult, ToResult;
     if (!FromExpr->EvaluateAsRValue(FromResult, Context) ||
-        !ToExpr->EvaluateAsRValue(ToResult, Context))
-      return false;
+        !ToExpr->EvaluateAsRValue(ToResult, Context)) {
+      llvm::FoldingSetNodeID FromID, ToID;
+      FromExpr->Profile(FromID, Context, true);
+      ToExpr->Profile(ToID, Context, true);
+      return FromID == ToID;
+    }
 
     APValue &FromVal = FromResult.Val;
     APValue &ToVal = ToResult.Val;
@@ -1466,7 +1468,7 @@ class TemplateDiff {
            "Only one template argument may be missing.");
 
     if (Same) {
-      OS << FromType.getAsString();
+      OS << FromType.getAsString(Policy);
       return;
     }
 
@@ -1481,14 +1483,15 @@ class TemplateDiff {
     }
 
     std::string FromTypeStr = FromType.isNull() ? "(no argument)"
-                                                : FromType.getAsString();
+                                                : FromType.getAsString(Policy);
     std::string ToTypeStr = ToType.isNull() ? "(no argument)"
-                                            : ToType.getAsString();
+                                            : ToType.getAsString(Policy);
     // Switch to canonical typename if it is better.
     // TODO: merge this with other aka printing above.
     if (FromTypeStr == ToTypeStr) {
-      std::string FromCanTypeStr = FromType.getCanonicalType().getAsString();
-      std::string ToCanTypeStr = ToType.getCanonicalType().getAsString();
+      std::string FromCanTypeStr =
+          FromType.getCanonicalType().getAsString(Policy);
+      std::string ToCanTypeStr = ToType.getCanonicalType().getAsString(Policy);
       if (FromCanTypeStr != ToCanTypeStr) {
         FromTypeStr = FromCanTypeStr;
         ToTypeStr = ToCanTypeStr;

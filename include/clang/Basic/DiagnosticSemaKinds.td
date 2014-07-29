@@ -566,12 +566,15 @@ def err_protocol_has_circular_dependency : Error<
   "protocol has circular dependency">;
 def err_undeclared_protocol : Error<"cannot find protocol declaration for %0">;
 def warn_undef_protocolref : Warning<"cannot find protocol definition for %0">;
+def warn_atprotocol_protocol : Warning<
+  "@protocol is using a forward protocol declaration of %0">, InGroup<AtProtocol>;
 def warn_readonly_property : Warning<
   "attribute 'readonly' of property %0 restricts attribute "
   "'readwrite' of property inherited from %1">;
 
 def warn_property_attribute : Warning<
-  "'%1' attribute on property %0 does not match the property inherited from %2">;
+  "'%1' attribute on property %0 does not match the property inherited from %2">,
+  InGroup<PropertyAttr>;
 def warn_property_types_are_incompatible : Warning<
   "property type %0 is incompatible with type %1 inherited from %2">;
 def warn_protocol_property_mismatch : Warning<
@@ -741,7 +744,8 @@ def warn_objc_property_default_assign_on_object : Warning<
   "default property attribute 'assign' not appropriate for non-GC object">,
   InGroup<ObjCPropertyNoAttribute>;
 def warn_property_attr_mismatch : Warning<
-  "property attribute in class extension does not match the primary class">;
+  "property attribute in class extension does not match the primary class">,
+  InGroup<PropertyAttr>;
 def warn_property_implicitly_mismatched : Warning <
   "primary property declaration is implicitly strong while redeclaration "
   "in class extension is weak">,
@@ -780,6 +784,10 @@ def warn_no_autosynthesis_property : Warning<
   "auto property synthesis will not synthesize property "
   "%0 because it is 'readwrite' but it will be synthesized 'readonly' "
   "via another property">,
+  InGroup<ObjCNoPropertyAutoSynthesis>;
+def warn_autosynthesis_property_in_superclass : Warning<
+  "auto property synthesis will not synthesize property "
+  "%0 because it will be implemented by its superclass">,
   InGroup<ObjCNoPropertyAutoSynthesis>;
 def warn_autosynthesis_property_ivar_match :Warning<
   "autosynthesized property %0 will use %select{|synthesized}1 instance variable "

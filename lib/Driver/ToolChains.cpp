@@ -1628,11 +1628,6 @@ static bool isMicroMips(const ArgList &Args) {
   return A && A->getOption().matches(options::OPT_mmicromips);
 }
 
-static bool isMipsFP64(const ArgList &Args) {
-  Arg *A = Args.getLastArg(options::OPT_mfp64, options::OPT_mfp32);
-  return A && A->getOption().matches(options::OPT_mfp64);
-}
-
 struct DetectedMultilibs {
   /// The set of multilibs that the detected installation supports.
   MultilibSet Multilibs;
@@ -1732,12 +1727,6 @@ static bool findMIPSMultilibs(const llvm::Triple &TargetTriple, StringRef Path,
       .includeSuffix("/sof")
       .flag("+msoft-float");
 
-    Multilib FP64 = Multilib()
-      .gccSuffix("/fp64")
-      .osSuffix("/fp64")
-      .includeSuffix("/fp64")
-      .flag("+mfp64");
-
     Multilib Nan2008 = Multilib()
       .gccSuffix("/nan2008")
       .osSuffix("/nan2008")
@@ -1758,10 +1747,8 @@ static bool findMIPSMultilibs(const llvm::Triple &TargetTriple, StringRef Path,
       .FilterOut("/mips16/64")
       .Either(BigEndian, LittleEndian)
       .Maybe(SoftFloat)
-      .Maybe(FP64)
       .Maybe(Nan2008)
       .FilterOut(".*sof/nan2008")
-      .FilterOut(".*sof/fp64")
       .FilterOut(NonExistent);
   }
 
@@ -1892,8 +1879,6 @@ static bool findMIPSMultilibs(const llvm::Triple &TargetTriple, StringRef Path,
   addMultilibFlag(CPUName == "mips64r2" || CPUName == "octeon",
                   "march=mips64r2", Flags);
   addMultilibFlag(isMicroMips(Args), "mmicromips", Flags);
-  addMultilibFlag(isMipsFP64(Args), "mfp64", Flags);
-  addMultilibFlag(!isMipsFP64(Args), "mfp32", Flags);
   addMultilibFlag(tools::mips::isNaN2008(Args, TargetTriple), "mnan=2008",
                   Flags);
   addMultilibFlag(ABIName == "n32", "mabi=n32", Flags);
@@ -2680,12 +2665,13 @@ NetBSD::GetCXXStdlibType(const ArgList &Args) const {
 
   unsigned Major, Minor, Micro;
   getTriple().getOSVersion(Major, Minor, Micro);
-  if (Major >= 7 || (Major == 6 && Minor == 99 && Micro >= 40) || Major == 0) {
+  if (Major >= 7 || (Major == 6 && Minor == 99 && Micro >= 49) || Major == 0) {
     switch (getArch()) {
     case llvm::Triple::arm:
     case llvm::Triple::armeb:
     case llvm::Triple::thumb:
     case llvm::Triple::thumbeb:
+    case llvm::Triple::ppc:
     case llvm::Triple::x86:
     case llvm::Triple::x86_64:
       return ToolChain::CST_Libcxx;
