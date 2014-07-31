@@ -5635,6 +5635,12 @@ Sema::AddOverloadCandidate(FunctionDecl *Function,
   if (getLangOpts().CUDA)
     if (const FunctionDecl *Caller = dyn_cast<FunctionDecl>(CurContext))
       if (CheckCUDATarget(Caller, Function)) {
+        llvm::errs() << "@@@@ CheckCUDATarget failed\n";
+        llvm::errs() << "Caller:\n";
+        Caller->dump();
+        llvm::errs() << "Function:\n";
+        Function->dump();
+
         Candidate.Viable = false;
         Candidate.FailureKind = ovl_fail_bad_target;
         return;

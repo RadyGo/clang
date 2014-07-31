@@ -8100,6 +8100,9 @@ public:
                        CUDAFunctionTarget CalleeTarget);
 
   bool CheckCUDATarget(const FunctionDecl *Caller, const FunctionDecl *Callee) {
+    if (Caller->isImplicit()) {
+      return false;
+    }
     return CheckCUDATarget(IdentifyCUDATarget(Caller),
                            IdentifyCUDATarget(Callee));
   }
