@@ -88,10 +88,28 @@ static QualType getFunctionOrMethodParamType(const Decl *D, unsigned Idx) {
   return cast<ObjCMethodDecl>(D)->parameters()[Idx]->getType();
 }
 
+static SourceRange getFunctionOrMethodParamRange(const Decl *D, unsigned Idx) {
+  if (const auto *FD = dyn_cast<FunctionDecl>(D))
+    return FD->getParamDecl(Idx)->getSourceRange();
+  else if (const auto *MD = dyn_cast<ObjCMethodDecl>(D))
+    return MD->parameters()[Idx]->getSourceRange();
+  else if (const auto *BD = dyn_cast<BlockDecl>(D))
+    return BD->getParamDecl(Idx)->getSourceRange();
+  return SourceRange();
+}
+
 static QualType getFunctionOrMethodResultType(const Decl *D) {
   if (const FunctionType *FnTy = D->getFunctionType())
     return cast<FunctionType>(FnTy)->getReturnType();
   return cast<ObjCMethodDecl>(D)->getReturnType();
+}
+
+static SourceRange getFunctionOrMethodResultSourceRange(const Decl *D) {
+  if (const auto *FD = dyn_cast<FunctionDecl>(D))
+    return FD->getReturnTypeSourceRange();
+  else if (const auto *MD = dyn_cast<ObjCMethodDecl>(D))
+    return MD->getReturnTypeSourceRange();
+  return SourceRange();
 }
 
 static bool isFunctionOrMethodVariadic(const Decl *D) {
@@ -1122,15 +1140,17 @@ static void possibleTransparentUnionPointerType(QualType &T) {
 }
 
 static bool attrNonNullArgCheck(Sema &S, QualType T, const AttributeList &Attr,
-                                SourceRange R, bool isReturnValue = false) {
+                                SourceRange AttrParmRange,
+                                SourceRange NonNullTypeRange,
+                                bool isReturnValue = false) {
   T = T.getNonReferenceType();
   possibleTransparentUnionPointerType(T);
 
   if (!T->isAnyPointerType() && !T->isBlockPointerType()) {
-    S.Diag(Attr.getLoc(),
-           isReturnValue ? diag::warn_attribute_return_pointers_only
-                         : diag::warn_attribute_pointers_only)
-      << Attr.getName() << R;
+    S.Diag(Attr.getLoc(), isReturnValue
+                              ? diag::warn_attribute_return_pointers_only
+                              : diag::warn_attribute_pointers_only)
+        << Attr.getName() << AttrParmRange << NonNullTypeRange;
     return false;
   }
   return true;
@@ -1145,9 +1165,9 @@ static void handleNonNullAttr(Sema &S, Decl *D, const AttributeList &Attr) {
       return;
 
     // Is the function argument a pointer type?
-    // FIXME: Should also highlight argument in decl in the diagnostic.
     if (!attrNonNullArgCheck(S, getFunctionOrMethodParamType(D, Idx), Attr,
-                             Ex->getSourceRange()))
+                             Ex->getSourceRange(),
+                             getFunctionOrMethodParamRange(D, Idx)))
       continue;
 
     NonNullArgs.push_back(Idx);
@@ -1194,7 +1214,8 @@ static void handleNonNullAttrParameter(Sema &S, ParmVarDecl *D,
   }
 
   // Is the argument a pointer type?
-  if (!attrNonNullArgCheck(S, D->getType(), Attr, D->getSourceRange()))
+  if (!attrNonNullArgCheck(S, D->getType(), Attr, SourceRange(),
+                           D->getSourceRange()))
     return;
 
   D->addAttr(::new (S.Context)
@@ -1205,7 +1226,8 @@ static void handleNonNullAttrParameter(Sema &S, ParmVarDecl *D,
 static void handleReturnsNonNullAttr(Sema &S, Decl *D,
                                      const AttributeList &Attr) {
   QualType ResultType = getFunctionOrMethodResultType(D);
-  if (!attrNonNullArgCheck(S, ResultType, Attr, Attr.getRange(),
+  SourceRange SR = getFunctionOrMethodResultSourceRange(D);
+  if (!attrNonNullArgCheck(S, ResultType, Attr, SourceRange(), SR,
                            /* isReturnValue */ true))
     return;
 
@@ -1292,13 +1314,26 @@ static void handleOwnershipAttr(Sema &S, Decl *D, const AttributeList &AL) {
 
     // Check we don't have a conflict with another ownership attribute.
     for (const auto *I : D->specific_attrs<OwnershipAttr>()) {
-      // FIXME: A returns attribute should conflict with any returns attribute
-      // with a different index too.
+      // Cannot have two ownership attributes of different kinds for the same
+      // index.
       if (I->getOwnKind() != K && I->args_end() !=
           std::find(I->args_begin(), I->args_end(), Idx)) {
         S.Diag(AL.getLoc(), diag::err_attributes_are_not_compatible)
           << AL.getName() << I;
         return;
+      } else if (K == OwnershipAttr::Returns &&
+                 I->getOwnKind() == OwnershipAttr::Returns) {
+        // A returns attribute conflicts with any other returns attribute using
+        // a different index. Note, diagnostic reporting is 1-based, but stored
+        // argument indexes are 0-based.
+        if (std::find(I->args_begin(), I->args_end(), Idx) == I->args_end()) {
+          S.Diag(I->getLocation(), diag::err_ownership_returns_index_mismatch)
+              << *(I->args_begin()) + 1;
+          if (I->args_size())
+            S.Diag(AL.getLoc(), diag::note_ownership_returns_index_mismatch)
+                << (unsigned)Idx + 1 << Ex->getSourceRange();
+          return;
+        }
       }
     }
     OwnershipArgs.push_back(Idx);
