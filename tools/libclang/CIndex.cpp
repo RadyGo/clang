@@ -3688,15 +3688,6 @@ CXString clang_Cursor_getMangling(CXCursor C) {
   std::string FrontendBuf;
   llvm::raw_string_ostream FrontendBufOS(FrontendBuf);
   MC->mangleName(ND, FrontendBufOS);
-  FrontendBufOS.flush();
-
-  // The Microsoft mangler may insert a special character in the beginning to
-  // prevent further mangling. We stop mangling and strip it for display
-  // purposes.
-  if (FrontendBuf[0] == '\x01') {
-    FrontendBuf.erase(0, 1);
-    return cxstring::createDup(FrontendBuf);
-  }
 
   // Now apply backend mangling.
   std::unique_ptr<llvm::DataLayout> DL(
@@ -3705,7 +3696,8 @@ CXString clang_Cursor_getMangling(CXCursor C) {
 
   std::string FinalBuf;
   llvm::raw_string_ostream FinalBufOS(FinalBuf);
-  BackendMangler.getNameWithPrefix(FinalBufOS, llvm::Twine(FrontendBuf));
+  BackendMangler.getNameWithPrefix(FinalBufOS,
+                                   llvm::Twine(FrontendBufOS.str()));
 
   return cxstring::createDup(FinalBufOS.str());
 }
