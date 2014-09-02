@@ -41,6 +41,8 @@
 #include <map>
 #include <set>
 
+#include <execinfo.h>
+
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -4564,6 +4566,9 @@ void Sema::CheckCompletedCXXClass(CXXRecordDecl *Record) {
   if (!Record)
     return;
 
+  llvm::errs() << "@@ CheckCompletedCXXClass [entering]\n";
+  Record->dump();
+
   if (Record->isAbstract() && !Record->isInvalidDecl()) {
     AbstractUsageInfo Info(*this, Record);
     CheckAbstractClassUsage(Info, Record);
@@ -4723,6 +4728,9 @@ void Sema::CheckCompletedCXXClass(CXXRecordDecl *Record) {
   DeclareInheritingConstructors(Record);
 
   checkDLLAttribute(*this, Record);
+
+  llvm::errs() << "@@ CheckCompletedCXXClass [exiting]\n";
+  Record->dump();
 }
 
 /// Look up the special member function that would be called by a special
@@ -8503,6 +8511,18 @@ CXXConstructorDecl *Sema::DeclareImplicitDefaultConstructor(
   assert(ClassDecl->needsImplicitDefaultConstructor() && 
          "Should not build implicit default constructor!");
 
+  llvm::errs() << "@@ DeclareImplicitDefaultConstructor for:\n";
+  ClassDecl->dump();
+
+  void* tracePtrs[100];
+  int count = backtrace( tracePtrs, 100 );
+  char** funcNames = backtrace_symbols( tracePtrs, count );
+  // Print the stack trace
+  for( int ii = 0; ii < count; ii++ )
+    llvm::errs() << funcNames[ii] << "\n";
+  // Free the string pointers
+  free( funcNames );
+
   DeclaringSpecialMember DSM(*this, ClassDecl, CXXDefaultConstructor);
   if (DSM.isAlreadyBeingDeclared())
     return nullptr;
@@ -8553,6 +8573,18 @@ void Sema::DefineImplicitDefaultConstructor(SourceLocation CurrentLocation,
           !Constructor->doesThisDeclarationHaveABody() &&
           !Constructor->isDeleted()) &&
     "DefineImplicitDefaultConstructor - call it for implicit default ctor");
+
+  llvm::errs() << "@@ DefineImplicitDefaultConstructor:\n";
+  Constructor->dump();
+
+  void* tracePtrs[100];
+  int count = backtrace( tracePtrs, 100 );
+  char** funcNames = backtrace_symbols( tracePtrs, count );
+  // Print the stack trace
+  for( int ii = 0; ii < count; ii++ )
+    llvm::errs() << funcNames[ii] << "\n";
+  // Free the string pointers
+  free( funcNames );
 
   CXXRecordDecl *ClassDecl = Constructor->getParent();
   assert(ClassDecl && "DefineImplicitDefaultConstructor - invalid constructor");
@@ -13103,6 +13135,9 @@ Sema::checkExceptionSpecification(ExceptionSpecificationType EST,
 
 /// IdentifyCUDATarget - Determine the CUDA compilation target for this function
 Sema::CUDAFunctionTarget Sema::IdentifyCUDATarget(const FunctionDecl *D) {
+  llvm::errs() << "@@ IdentifyCUDATarget for FunctionDecl:\n";
+  D->dump();
+
   // Implicitly declared functions (e.g. copy constructors) are
   // __host__ __device__
   if (D->isImplicit())
@@ -13122,6 +13157,16 @@ Sema::CUDAFunctionTarget Sema::IdentifyCUDATarget(const FunctionDecl *D) {
 
 bool Sema::CheckCUDATarget(CUDAFunctionTarget CallerTarget,
                            CUDAFunctionTarget CalleeTarget) {
+  llvm::errs() << "@@ CheckCUDATarget:\n";
+  void* tracePtrs[100];
+  int count = backtrace( tracePtrs, 100 );
+  char** funcNames = backtrace_symbols( tracePtrs, count );
+  // Print the stack trace
+  for( int ii = 0; ii < count; ii++ )
+    llvm::errs() << funcNames[ii] << "\n";
+  // Free the string pointers
+  free( funcNames );
+
   // CUDA B.1.1 "The __device__ qualifier declares a function that is...
   // Callable from the device only."
   if (CallerTarget == CFT_Host && CalleeTarget == CFT_Device)
