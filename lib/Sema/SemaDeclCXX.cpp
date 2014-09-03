@@ -8516,7 +8516,7 @@ CXXConstructorDecl *Sema::DeclareImplicitDefaultConstructor(
   //   user-declared constructor for class X, a default constructor is
   //   implicitly declared. An implicitly-declared default constructor
   //   is an inline public member of its class.
-  assert(ClassDecl->needsImplicitDefaultConstructor() && 
+  assert(ClassDecl->needsImplicitDefaultConstructor() &&
          "Should not build implicit default constructor!");
 
   DeclaringSpecialMember DSM(*this, ClassDecl, CXXDefaultConstructor);
@@ -8541,6 +8541,15 @@ CXXConstructorDecl *Sema::DeclareImplicitDefaultConstructor(
   DefaultCon->setAccess(AS_public);
   DefaultCon->setDefaulted();
   DefaultCon->setImplicit();
+
+  if (getLangOpts().CUDA) {
+    // This has to happen before ShouldDeleteSpecialMember is called. In the
+    // absence of this inference, ShouldDeleteSpecialMember may wrongly decide
+    // to delete this ctor.
+    inferCUDATargetForDefaultedSpecialMember(ClassDecl, CXXDefaultConstructor,
+                                             DefaultCon,
+                                             false);
+  }
 
   // Build an exception specification pointing back at this constructor.
   FunctionProtoType::ExtProtoInfo EPI = getImplicitMethodEPI(*this, DefaultCon);

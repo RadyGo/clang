@@ -8179,10 +8179,12 @@ public:
   bool CheckCUDATarget(CUDAFunctionTarget CallerTarget,
                        CUDAFunctionTarget CalleeTarget);
 
-  bool CheckCUDATarget(const FunctionDecl *Caller, const FunctionDecl *Callee) {
-    return CheckCUDATarget(IdentifyCUDATarget(Caller),
-                           IdentifyCUDATarget(Callee));
-  }
+  bool CheckCUDATarget(const FunctionDecl *Caller, const FunctionDecl *Callee);
+
+  void inferCUDATargetForDefaultedSpecialMember(CXXRecordDecl *ClassDecl,
+                                                CXXSpecialMember CSM,
+                                                CXXConstructorDecl *CtorDecl,
+                                                bool ConstRHS);
 
   /// \name Code completion
   //@{
