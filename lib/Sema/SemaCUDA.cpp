@@ -50,12 +50,6 @@ Sema::CUDAFunctionTarget Sema::IdentifyCUDATarget(const FunctionDecl *D) {
 
 bool Sema::CheckCUDATarget(const FunctionDecl *Caller,
                            const FunctionDecl *Callee) {
-  // llvm::errs() << "@@ CheckCUDATarget\n";
-  // llvm::errs() << "   Caller:\n";
-  // Caller->dump();
-  // llvm::errs() << "   Callee:\n";
-  // Callee->dump();
-
   return CheckCUDATarget(IdentifyCUDATarget(Caller),
                          IdentifyCUDATarget(Callee));
 }
@@ -142,10 +136,6 @@ void Sema::inferCUDATargetForDefaultedSpecialMember(CXXRecordDecl *ClassDecl,
     }
 
     CUDAFunctionTarget BaseMethodTarget = IdentifyCUDATarget(SMOR->getMethod());
-    // llvm::errs() << "@@ inferCUDATargetForDefaultedSpecialMember found
-    // base\n";
-    // BaseMethod->dump();
-
     if (!HasInferredTarget) {
       HasInferredTarget = true;
       InferredTarget = BaseMethodTarget;
@@ -188,10 +178,6 @@ void Sema::inferCUDATargetForDefaultedSpecialMember(CXXRecordDecl *ClassDecl,
 
     CUDAFunctionTarget FieldMethodTarget =
         IdentifyCUDATarget(SMOR->getMethod());
-    // llvm::errs() << "@@ inferCUDATargetForDefaultedSpecialMember found
-    // field\n";
-    // FieldMethod->dump();
-
     if (!HasInferredTarget) {
       HasInferredTarget = true;
       InferredTarget = FieldMethodTarget;

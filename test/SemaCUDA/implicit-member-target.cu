@@ -24,7 +24,7 @@ void hostfoo() {
 }
 
 __device__ void devicefoo() {
-  B1_with_implicit_default_ctor b; // expected-error {{no matching constructor}} 
+  B1_with_implicit_default_ctor b; // expected-error {{no matching constructor}}
 }
 
 //------------------------------------------------------------------------------
@@ -41,7 +41,7 @@ struct B2_with_implicit_default_ctor : A2_with_device_ctor {
 // expected-note@-4 {{requires 1 argument}}
 
 void hostfoo2() {
-  B2_with_implicit_default_ctor b;  // expected-error {{no matching constructor}} 
+  B2_with_implicit_default_ctor b;  // expected-error {{no matching constructor}}
 }
 
 __device__ void devicefoo2() {
@@ -65,7 +65,7 @@ struct B3_with_implicit_ctors : A3_with_device_ctors {
 void hostfoo3() {
   B3_with_implicit_ctors b;  // this is OK because the inferred default ctor
                              // here is __host__
-  B3_with_implicit_ctors b2 = b; // expected-error {{no matching constructor}} 
+  B3_with_implicit_ctors b2 = b; // expected-error {{no matching constructor}}
 
 }
 
@@ -88,5 +88,5 @@ void hostfoo4() {
 }
 
 __device__ void devicefoo4() {
-  B4_with_implicit_default_ctor b; // expected-error {{no matching constructor}} 
+  B4_with_implicit_default_ctor b; // expected-error {{no matching constructor}}
 }
