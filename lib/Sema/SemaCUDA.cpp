@@ -36,11 +36,9 @@ ExprResult Sema::ActOnCUDAExecConfigExpr(Scope *S, SourceLocation LLLLoc,
 
 /// IdentifyCUDATarget - Determine the CUDA compilation target for this function
 Sema::CUDAFunctionTarget Sema::IdentifyCUDATarget(const FunctionDecl *D) {
-  // Implicitly declared functions (e.g. copy constructors) are
-  // __host__ __device__
-  //if (D->isImplicit()) {
-    //return CFT_HostDevice;
-  //}
+  //assert((!D->isImplicit() ||
+          //(D->hasAttr<CUDADeviceAttr>() || D->hasAttr<CUDAHostAttr>())) &&
+         //"Expecting target of implicit members to be inferred");
 
   if (D->hasAttr<CUDAGlobalAttr>())
     return CFT_Global;
@@ -56,11 +54,11 @@ Sema::CUDAFunctionTarget Sema::IdentifyCUDATarget(const FunctionDecl *D) {
 
 bool Sema::CheckCUDATarget(const FunctionDecl *Caller,
                            const FunctionDecl *Callee) {
-  llvm::errs() << "@@ CheckCUDATarget\n";
-  llvm::errs() << "   Caller:\n";
-  Caller->dump();
-  llvm::errs() << "   Callee:\n";
-  Callee->dump();
+  // llvm::errs() << "@@ CheckCUDATarget\n";
+  // llvm::errs() << "   Caller:\n";
+  // Caller->dump();
+  // llvm::errs() << "   Callee:\n";
+  // Callee->dump();
 
   return CheckCUDATarget(IdentifyCUDATarget(Caller),
                          IdentifyCUDATarget(Callee));
@@ -87,6 +85,14 @@ bool Sema::CheckCUDATarget(CUDAFunctionTarget CallerTarget,
   return false;
 }
 
+/// When an implicitly-declared special member has to invoke more than one
+/// base/field special member, conflicts may occur in the targets of these
+/// members. For example, if one base's member __host__ and another's is
+/// __device__, it's a conflict.
+/// This function figures out if the given targets \param Target1 and
+/// \param Target2 conflict, and if they do not it fills in
+/// \param ResolvedTarget with a target that resolves for both calls.
+/// \return true if there's a conflict, false otherwise.
 static bool
 resolveCalleeCUDATargetConflict(Sema::CUDAFunctionTarget Target1,
                                 Sema::CUDAFunctionTarget Target2,
@@ -107,13 +113,19 @@ resolveCalleeCUDATargetConflict(Sema::CUDAFunctionTarget Target1,
   return true;
 }
 
-void Sema::inferCUDATargetForDefaultedSpecialMember(
-    CXXRecordDecl *ClassDecl, CXXSpecialMember CSM,
-    CXXConstructorDecl *CtorDecl, bool ConstRHS) {
-
+void Sema::inferCUDATargetForDefaultedSpecialMember(CXXRecordDecl *ClassDecl,
+                                                    CXXSpecialMember CSM,
+                                                    CXXMethodDecl *MemberDecl,
+                                                    bool ConstRHS) {
   CUDAFunctionTarget InferredTarget;
   bool HasInferredTarget = false;
 
+  // We're going to invoke special member lookup; mark that these special
+  // members are called from this one, and not from its caller.
+  ContextRAII MethodContext(*this, MemberDecl);
+
+  // Look for special members in base classes that should be invoked from here.
+  // Infer the target of this member base on the ones it should call.
   for (const auto &B : ClassDecl->bases()) {
     const RecordType *BaseType = B.getType()->getAs<RecordType>();
     if (!BaseType) {
@@ -133,10 +145,10 @@ void Sema::inferCUDATargetForDefaultedSpecialMember(
       continue;
     }
 
-    CXXMethodDecl *BaseMethod = SMOR->getMethod();
-    CUDAFunctionTarget BaseMethodTarget = IdentifyCUDATarget(BaseMethod);
-    llvm::errs() << "@@ inferCUDATargetForDefaultedSpecialMember found base\n";
-    BaseMethod->dump();
+    CUDAFunctionTarget BaseMethodTarget = IdentifyCUDATarget(SMOR->getMethod());
+    // llvm::errs() << "@@ inferCUDATargetForDefaultedSpecialMember found
+    // base\n";
+    // BaseMethod->dump();
 
     if (!HasInferredTarget) {
       HasInferredTarget = true;
@@ -145,25 +157,27 @@ void Sema::inferCUDATargetForDefaultedSpecialMember(
       bool ResolutionError = resolveCalleeCUDATargetConflict(
           InferredTarget, BaseMethodTarget, &InferredTarget);
       if (ResolutionError) {
-        // TODO(eliben): proper diagnostic here
-        llvm::errs() << "!!! BOO BAD COLLISION: " << InferredTarget << " and "
-                     << BaseMethodTarget << "\n";
+        Diag(ClassDecl->getLocation(),
+             diag::err_implicit_member_target_infer_collision)
+            << (unsigned)CSM << InferredTarget << BaseMethodTarget;
         return;
       }
     }
   }
 
+  // Same as for bases, but now for special members of fields.
   for (const auto *F : ClassDecl->fields()) {
     if (F->isInvalidDecl()) {
       continue;
     }
-    QualType QualBaseType = Context.getBaseElementType(F->getType());
-    const RecordType *BaseType = QualBaseType->getAs<RecordType>();
-    if (!BaseType) {
+
+    const RecordType *FieldType =
+        Context.getBaseElementType(F->getType())->getAs<RecordType>();
+    if (!FieldType) {
       continue;
     }
 
-    CXXRecordDecl *FieldRecDecl = cast<CXXRecordDecl>(BaseType->getDecl());
+    CXXRecordDecl *FieldRecDecl = cast<CXXRecordDecl>(FieldType->getDecl());
     Sema::SpecialMemberOverloadResult *SMOR =
         LookupSpecialMember(FieldRecDecl, CSM,
                             /* ConstArg */ ConstRHS && !F->isMutable(),
@@ -176,10 +190,11 @@ void Sema::inferCUDATargetForDefaultedSpecialMember(
       continue;
     }
 
-    CXXMethodDecl *FieldMethod = SMOR->getMethod();
-    CUDAFunctionTarget FieldMethodTarget = IdentifyCUDATarget(FieldMethod);
-    llvm::errs() << "@@ inferCUDATargetForDefaultedSpecialMember found field\n";
-    FieldMethod->dump();
+    CUDAFunctionTarget FieldMethodTarget =
+        IdentifyCUDATarget(SMOR->getMethod());
+    // llvm::errs() << "@@ inferCUDATargetForDefaultedSpecialMember found
+    // field\n";
+    // FieldMethod->dump();
 
     if (!HasInferredTarget) {
       HasInferredTarget = true;
@@ -188,9 +203,9 @@ void Sema::inferCUDATargetForDefaultedSpecialMember(
       bool ResolutionError = resolveCalleeCUDATargetConflict(
           InferredTarget, FieldMethodTarget, &InferredTarget);
       if (ResolutionError) {
-        // TODO(eliben): proper diagnostic here
-        llvm::errs() << "!!! BOO BAD COLLISION: " << InferredTarget << " and "
-                     << FieldMethodTarget << "\n";
+        Diag(ClassDecl->getLocation(),
+             diag::err_implicit_member_target_infer_collision)
+            << (unsigned)CSM << InferredTarget << FieldMethodTarget;
         return;
       }
     }
@@ -198,12 +213,17 @@ void Sema::inferCUDATargetForDefaultedSpecialMember(
 
   if (HasInferredTarget) {
     if (InferredTarget == CFT_Device) {
-      CtorDecl->addAttr(CUDADeviceAttr::CreateImplicit(Context));
+      MemberDecl->addAttr(CUDADeviceAttr::CreateImplicit(Context));
     } else if (InferredTarget == CFT_Host) {
-      CtorDecl->addAttr(CUDAHostAttr::CreateImplicit(Context));
+      MemberDecl->addAttr(CUDAHostAttr::CreateImplicit(Context));
     } else {
-      CtorDecl->addAttr(CUDADeviceAttr::CreateImplicit(Context));
-      CtorDecl->addAttr(CUDAHostAttr::CreateImplicit(Context));
+      MemberDecl->addAttr(CUDADeviceAttr::CreateImplicit(Context));
+      MemberDecl->addAttr(CUDAHostAttr::CreateImplicit(Context));
     }
+  } else {
+    // If no target was inferred, mark this member as __host__ __device__;
+    // it's the least restrictive option that can be invoked from any target.
+    MemberDecl->addAttr(CUDADeviceAttr::CreateImplicit(Context));
+    MemberDecl->addAttr(CUDAHostAttr::CreateImplicit(Context));
   }
 }

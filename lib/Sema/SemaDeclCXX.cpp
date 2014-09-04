@@ -9011,6 +9011,12 @@ CXXDestructorDecl *Sema::DeclareImplicitDestructor(CXXRecordDecl *ClassDecl) {
   Destructor->setDefaulted();
   Destructor->setImplicit();
 
+  if (getLangOpts().CUDA) {
+    inferCUDATargetForDefaultedSpecialMember(ClassDecl, CXXDestructor,
+                                             Destructor,
+                                             false);
+  }
+
   // Build an exception specification pointing back at this destructor.
   FunctionProtoType::ExtProtoInfo EPI = getImplicitMethodEPI(*this, Destructor);
   Destructor->setType(Context.getFunctionType(Context.VoidTy, None, EPI));
@@ -9635,6 +9641,12 @@ CXXMethodDecl *Sema::DeclareImplicitCopyAssignment(CXXRecordDecl *ClassDecl) {
   CopyAssignment->setDefaulted();
   CopyAssignment->setImplicit();
 
+  if (getLangOpts().CUDA) {
+    inferCUDATargetForDefaultedSpecialMember(ClassDecl, CXXCopyAssignment,
+                                             CopyAssignment,
+                                             Const);
+  }
+
   // Build an exception specification pointing back at this member.
   FunctionProtoType::ExtProtoInfo EPI =
       getImplicitMethodEPI(*this, CopyAssignment);
@@ -10016,6 +10028,12 @@ CXXMethodDecl *Sema::DeclareImplicitMoveAssignment(CXXRecordDecl *ClassDecl) {
   MoveAssignment->setAccess(AS_public);
   MoveAssignment->setDefaulted();
   MoveAssignment->setImplicit();
+
+  if (getLangOpts().CUDA) {
+    inferCUDATargetForDefaultedSpecialMember(ClassDecl, CXXMoveAssignment,
+                                             MoveAssignment,
+                                             false);
+  }
 
   // Build an exception specification pointing back at this member.
   FunctionProtoType::ExtProtoInfo EPI =
@@ -10442,6 +10460,13 @@ CXXConstructorDecl *Sema::DeclareImplicitCopyConstructor(
       Constexpr);
   CopyConstructor->setAccess(AS_public);
   CopyConstructor->setDefaulted();
+  CopyConstructor->setImplicit();
+
+  if (getLangOpts().CUDA) {
+    inferCUDATargetForDefaultedSpecialMember(ClassDecl, CXXCopyConstructor,
+                                             CopyConstructor,
+                                             Const);
+  }
 
   // Build an exception specification pointing back at this member.
   FunctionProtoType::ExtProtoInfo EPI =
@@ -10612,6 +10637,12 @@ CXXConstructorDecl *Sema::DeclareImplicitMoveConstructor(
       Constexpr);
   MoveConstructor->setAccess(AS_public);
   MoveConstructor->setDefaulted();
+
+  if (getLangOpts().CUDA) {
+    inferCUDATargetForDefaultedSpecialMember(ClassDecl, CXXMoveConstructor,
+                                             MoveConstructor,
+                                             false);
+  }
 
   // Build an exception specification pointing back at this member.
   FunctionProtoType::ExtProtoInfo EPI =

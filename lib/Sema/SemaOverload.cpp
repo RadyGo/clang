@@ -5634,7 +5634,7 @@ Sema::AddOverloadCandidate(FunctionDecl *Function,
   // (CUDA B.1): Check for invalid calls between targets.
   if (getLangOpts().CUDA)
     if (const FunctionDecl *Caller = dyn_cast<FunctionDecl>(CurContext))
-      if (CheckCUDATarget(Caller, Function)) {
+      if (!Caller->isImplicit() && CheckCUDATarget(Caller, Function)) {
         Candidate.Viable = false;
         Candidate.FailureKind = ovl_fail_bad_target;
         return;
@@ -9877,7 +9877,7 @@ private:
     if (FunctionDecl *FunDecl = dyn_cast<FunctionDecl>(Fn)) {
       if (S.getLangOpts().CUDA)
         if (FunctionDecl *Caller = dyn_cast<FunctionDecl>(S.CurContext))
-          if (S.CheckCUDATarget(Caller, FunDecl))
+          if (!Caller->isImplicit() && S.CheckCUDATarget(Caller, FunDecl))
             return false;
 
       // If any candidate has a placeholder return type, trigger its deduction
