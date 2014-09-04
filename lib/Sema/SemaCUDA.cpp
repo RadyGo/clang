@@ -36,10 +36,6 @@ ExprResult Sema::ActOnCUDAExecConfigExpr(Scope *S, SourceLocation LLLLoc,
 
 /// IdentifyCUDATarget - Determine the CUDA compilation target for this function
 Sema::CUDAFunctionTarget Sema::IdentifyCUDATarget(const FunctionDecl *D) {
-  //assert((!D->isImplicit() ||
-          //(D->hasAttr<CUDADeviceAttr>() || D->hasAttr<CUDAHostAttr>())) &&
-         //"Expecting target of implicit members to be inferred");
-
   if (D->hasAttr<CUDAGlobalAttr>())
     return CFT_Global;
 

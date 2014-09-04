@@ -10637,6 +10637,7 @@ CXXConstructorDecl *Sema::DeclareImplicitMoveConstructor(
       Constexpr);
   MoveConstructor->setAccess(AS_public);
   MoveConstructor->setDefaulted();
+  MoveConstructor->setImplicit();
 
   if (getLangOpts().CUDA) {
     inferCUDATargetForDefaultedSpecialMember(ClassDecl, CXXMoveConstructor,
