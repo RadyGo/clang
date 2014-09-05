@@ -5634,6 +5634,10 @@ Sema::AddOverloadCandidate(FunctionDecl *Function,
   // (CUDA B.1): Check for invalid calls between targets.
   if (getLangOpts().CUDA)
     if (const FunctionDecl *Caller = dyn_cast<FunctionDecl>(CurContext))
+      // Skip the check for callers that are implicit members, because in this
+      // case we still don't know what the member's target is; the target is
+      // inferred for the member automatically, based on the bases and fields of
+      // the class.
       if (!Caller->isImplicit() && CheckCUDATarget(Caller, Function)) {
         Candidate.Viable = false;
         Candidate.FailureKind = ovl_fail_bad_target;

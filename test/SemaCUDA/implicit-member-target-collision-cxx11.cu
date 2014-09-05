@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fsyntax-only -verify %s
+// RUN: %clang_cc1 -std=gnu++11 -fsyntax-only -verify %s
 
 #include "Inputs/cuda.h"
 
@@ -19,7 +19,7 @@ struct C1_with_collision : A1_with_host_ctor, B1_with_device_ctor {
 // expected-error@-3 {{implicit default constructor inferred target collision: call to both __host__ and __device__ members}}
 
 void hostfoo1() {
-  C1_with_collision c;
+  C1_with_collision c; // expected-error {{implicitly-deleted default constructor}}
 }
 
 //------------------------------------------------------------------------------
@@ -33,7 +33,7 @@ struct C2_with_collision {
 // expected-error@-5 {{implicit default constructor inferred target collision: call to both __host__ and __device__ members}}
 
 void hostfoo2() {
-  C2_with_collision c;
+  C2_with_collision c; // expected-error {{implicitly-deleted default constructor}}
 }
 
 //------------------------------------------------------------------------------
@@ -46,5 +46,5 @@ struct C3_with_collision : A1_with_host_ctor {
 // expected-error@-4 {{implicit default constructor inferred target collision: call to both __host__ and __device__ members}}
 
 void hostfoo4() {
-  C3_with_collision c;
+  C3_with_collision c; // expected-error {{implicitly-deleted default constructor}}
 }

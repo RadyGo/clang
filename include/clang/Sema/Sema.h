@@ -8181,19 +8181,22 @@ public:
 
   bool CheckCUDATarget(const FunctionDecl *Caller, const FunctionDecl *Callee);
 
-  /// Given a defaulted (implicit) special member, infer its CUDA target from the
+  /// Given a implicit special member, infer its CUDA target from the
   /// calls it needs to make to underlying base/field special members.
   /// \param ClassDecl the class for which the member is being created.
   /// \param CSM the kind of special member.
   /// \param MemberDecl the special member itself.
   /// \param ConstRHS true if this is a copy operation with a const object on
   ///        its RHS.
+  /// \param Diagnose true if this call should emit diagnostics.
+  /// \return true if there was an error inferring.
   /// The result of this call is implicit CUDA target attribute(s) attached to
   /// the member declaration.
-  void inferCUDATargetForDefaultedSpecialMember(CXXRecordDecl *ClassDecl,
-                                                CXXSpecialMember CSM,
-                                                CXXMethodDecl *MemberDecl,
-                                                bool ConstRHS);
+  bool inferCUDATargetForImplicitSpecialMember(CXXRecordDecl *ClassDecl,
+                                               CXXSpecialMember CSM,
+                                               CXXMethodDecl *MemberDecl,
+                                               bool ConstRHS,
+                                               bool Diagnose);
 
   /// \name Code completion
   //@{

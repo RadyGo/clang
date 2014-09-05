@@ -15,6 +15,8 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
 #include "clang/Sema/SemaDiagnostic.h"
+#include "llvm/ADT/Optional.h"
+#include "llvm/ADT/SmallVector.h"
 using namespace clang;
 
 ExprResult Sema::ActOnCUDAExecConfigExpr(Scope *S, SourceLocation LLLLoc,
@@ -100,15 +102,15 @@ resolveCalleeCUDATargetConflict(Sema::CUDAFunctionTarget Target1,
     *ResolvedTarget = Target1;
   }
 
-  return true;
+  return false;
 }
 
-void Sema::inferCUDATargetForDefaultedSpecialMember(CXXRecordDecl *ClassDecl,
-                                                    CXXSpecialMember CSM,
-                                                    CXXMethodDecl *MemberDecl,
-                                                    bool ConstRHS) {
-  CUDAFunctionTarget InferredTarget;
-  bool HasInferredTarget = false;
+bool Sema::inferCUDATargetForImplicitSpecialMember(CXXRecordDecl *ClassDecl,
+                                                   CXXSpecialMember CSM,
+                                                   CXXMethodDecl *MemberDecl,
+                                                   bool ConstRHS,
+                                                   bool Diagnose) {
+  llvm::Optional<CUDAFunctionTarget> InferredTarget;
 
   // We're going to invoke special member lookup; mark that these special
   // members are called from this one, and not from its caller.
@@ -116,8 +118,22 @@ void Sema::inferCUDATargetForDefaultedSpecialMember(CXXRecordDecl *ClassDecl,
 
   // Look for special members in base classes that should be invoked from here.
   // Infer the target of this member base on the ones it should call.
+  // Skip direct and indirect virtual bases for abstract classes.
+  llvm::SmallVector<const CXXBaseSpecifier *, 16> Bases;
   for (const auto &B : ClassDecl->bases()) {
-    const RecordType *BaseType = B.getType()->getAs<RecordType>();
+    if (!ClassDecl->isAbstract() || !B.isVirtual()) {
+      Bases.push_back(&B);
+    }
+  }
+
+  if (!ClassDecl->isAbstract()) {
+    for (const auto &VB : ClassDecl->vbases()) {
+      Bases.push_back(&VB);
+    }
+  }
+
+  for (const auto *B : Bases) {
+    const RecordType *BaseType = B->getType()->getAs<RecordType>();
     if (!BaseType) {
       continue;
     }
@@ -136,17 +152,24 @@ void Sema::inferCUDATargetForDefaultedSpecialMember(CXXRecordDecl *ClassDecl,
     }
 
     CUDAFunctionTarget BaseMethodTarget = IdentifyCUDATarget(SMOR->getMethod());
-    if (!HasInferredTarget) {
-      HasInferredTarget = true;
+    if (!InferredTarget.hasValue()) {
       InferredTarget = BaseMethodTarget;
     } else {
       bool ResolutionError = resolveCalleeCUDATargetConflict(
-          InferredTarget, BaseMethodTarget, &InferredTarget);
+          InferredTarget.getValue(), BaseMethodTarget,
+          InferredTarget.getPointer());
       if (ResolutionError) {
-        Diag(ClassDecl->getLocation(),
-             diag::err_implicit_member_target_infer_collision)
-            << (unsigned)CSM << InferredTarget << BaseMethodTarget;
-        return;
+        if (Diagnose) {
+          Diag(ClassDecl->getLocation(),
+               diag::err_implicit_member_target_infer_collision)
+              << (unsigned)CSM << InferredTarget.getValue()
+              << BaseMethodTarget;
+        } else {
+          if (getLangOpts().CPlusPlus11) {
+            SetDeclDeleted(MemberDecl, ClassDecl->getLocation());
+          }
+        }
+        return true;
       }
     }
   }
@@ -178,25 +201,32 @@ void Sema::inferCUDATargetForDefaultedSpecialMember(CXXRecordDecl *ClassDecl,
 
     CUDAFunctionTarget FieldMethodTarget =
         IdentifyCUDATarget(SMOR->getMethod());
-    if (!HasInferredTarget) {
-      HasInferredTarget = true;
+    if (!InferredTarget.hasValue()) {
       InferredTarget = FieldMethodTarget;
     } else {
       bool ResolutionError = resolveCalleeCUDATargetConflict(
-          InferredTarget, FieldMethodTarget, &InferredTarget);
+          InferredTarget.getValue(), FieldMethodTarget,
+          InferredTarget.getPointer());
       if (ResolutionError) {
-        Diag(ClassDecl->getLocation(),
-             diag::err_implicit_member_target_infer_collision)
-            << (unsigned)CSM << InferredTarget << FieldMethodTarget;
-        return;
+        if (Diagnose) {
+          Diag(ClassDecl->getLocation(),
+               diag::err_implicit_member_target_infer_collision)
+              << (unsigned)CSM << InferredTarget.getValue()
+              << FieldMethodTarget;
+        } else {
+          if (getLangOpts().CPlusPlus11) {
+            SetDeclDeleted(MemberDecl, ClassDecl->getLocation());
+          }
+        }
+        return true;
       }
     }
   }
 
-  if (HasInferredTarget) {
-    if (InferredTarget == CFT_Device) {
+  if (InferredTarget.hasValue()) {
+    if (InferredTarget.getValue() == CFT_Device) {
       MemberDecl->addAttr(CUDADeviceAttr::CreateImplicit(Context));
-    } else if (InferredTarget == CFT_Host) {
+    } else if (InferredTarget.getValue() == CFT_Host) {
       MemberDecl->addAttr(CUDAHostAttr::CreateImplicit(Context));
     } else {
       MemberDecl->addAttr(CUDADeviceAttr::CreateImplicit(Context));
@@ -208,4 +238,6 @@ void Sema::inferCUDATargetForDefaultedSpecialMember(CXXRecordDecl *ClassDecl,
     MemberDecl->addAttr(CUDADeviceAttr::CreateImplicit(Context));
     MemberDecl->addAttr(CUDAHostAttr::CreateImplicit(Context));
   }
+
+  return false;
 }
