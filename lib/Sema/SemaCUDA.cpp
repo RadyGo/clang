@@ -164,10 +164,6 @@ bool Sema::inferCUDATargetForImplicitSpecialMember(CXXRecordDecl *ClassDecl,
                diag::err_implicit_member_target_infer_collision)
               << (unsigned)CSM << InferredTarget.getValue()
               << BaseMethodTarget;
-        } else {
-          if (getLangOpts().CPlusPlus11) {
-            SetDeclDeleted(MemberDecl, ClassDecl->getLocation());
-          }
         }
         return true;
       }
@@ -213,10 +209,6 @@ bool Sema::inferCUDATargetForImplicitSpecialMember(CXXRecordDecl *ClassDecl,
                diag::err_implicit_member_target_infer_collision)
               << (unsigned)CSM << InferredTarget.getValue()
               << FieldMethodTarget;
-        } else {
-          if (getLangOpts().CPlusPlus11) {
-            SetDeclDeleted(MemberDecl, ClassDecl->getLocation());
-          }
         }
         return true;
       }
