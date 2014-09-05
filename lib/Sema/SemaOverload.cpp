@@ -5635,7 +5635,7 @@ Sema::AddOverloadCandidate(FunctionDecl *Function,
   if (getLangOpts().CUDA)
     if (const FunctionDecl *Caller = dyn_cast<FunctionDecl>(CurContext))
       // Skip the check for callers that are implicit members, because in this
-      // case we still don't know what the member's target is; the target is
+      // case we may not yet know what the member's target is; the target is
       // inferred for the member automatically, based on the bases and fields of
       // the class.
       if (!Caller->isImplicit() && CheckCUDATarget(Caller, Function)) {

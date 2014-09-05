@@ -121,7 +121,7 @@ bool Sema::inferCUDATargetForImplicitSpecialMember(CXXRecordDecl *ClassDecl,
   // Skip direct and indirect virtual bases for abstract classes.
   llvm::SmallVector<const CXXBaseSpecifier *, 16> Bases;
   for (const auto &B : ClassDecl->bases()) {
-    if (!ClassDecl->isAbstract() || !B.isVirtual()) {
+    if (!B.isVirtual()) {
       Bases.push_back(&B);
     }
   }

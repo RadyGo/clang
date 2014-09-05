@@ -5578,14 +5578,7 @@ bool Sema::ShouldDeleteSpecialMember(CXXMethodDecl *MD, CXXSpecialMember CSM,
   if (getLangOpts().CUDA) {
     // We should delete the special member in CUDA mode if target inference
     // failed.
-    bool Const = false;
-    if ((CSM == CXXCopyConstructor &&
-         RD->implicitCopyConstructorHasConstParam()) ||
-        (CSM == CXXCopyAssignment &&
-         RD->implicitCopyAssignmentHasConstParam())) {
-      Const = true;
-    }
-    return inferCUDATargetForImplicitSpecialMember(RD, CSM, MD, Const,
+    return inferCUDATargetForImplicitSpecialMember(RD, CSM, MD, SMI.ConstArg,
                                                    Diagnose);
   }
 
@@ -8557,9 +8550,6 @@ CXXConstructorDecl *Sema::DeclareImplicitDefaultConstructor(
   DefaultCon->setImplicit();
 
   if (getLangOpts().CUDA) {
-    // This has to happen before ShouldDeleteSpecialMember is called. In the
-    // absence of this inference, ShouldDeleteSpecialMember may wrongly decide
-    // to delete this ctor.
     inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXDefaultConstructor,
                                             DefaultCon,
                                             /* ConstRHS */ false,
