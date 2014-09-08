@@ -8171,7 +8171,8 @@ public:
     CFT_Device,
     CFT_Global,
     CFT_Host,
-    CFT_HostDevice
+    CFT_HostDevice,
+    CFT_InvalidTarget
   };
 
   CUDAFunctionTarget IdentifyCUDATarget(const FunctionDecl *D);

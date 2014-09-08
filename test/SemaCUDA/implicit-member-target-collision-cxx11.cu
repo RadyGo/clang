@@ -16,10 +16,13 @@ struct B1_with_device_ctor {
 struct C1_with_collision : A1_with_host_ctor, B1_with_device_ctor {
 };
 
-// expected-error@-3 {{implicit default constructor inferred target collision: call to both __host__ and __device__ members}}
+// expected-note@-3 {{candidate constructor (the implicit default constructor}} not viable
+// expected-note@-4 {{implicit default constructor inferred target collision: call to both __host__ and __device__ members}}
+// expected-note@-5 {{candidate constructor (the implicit copy constructor}} not viable
+// expected-note@-6 {{candidate constructor (the implicit move constructor}} not viable
 
 void hostfoo1() {
-  C1_with_collision c; // expected-error {{implicitly-deleted default constructor}}
+  C1_with_collision c; // expected-error {{no matching constructor}}
 }
 
 //------------------------------------------------------------------------------
@@ -30,10 +33,13 @@ struct C2_with_collision {
   B1_with_device_ctor bb;
 };
 
-// expected-error@-5 {{implicit default constructor inferred target collision: call to both __host__ and __device__ members}}
+// expected-note@-5 {{candidate constructor (the implicit default constructor}} not viable
+// expected-note@-6 {{implicit default constructor inferred target collision: call to both __host__ and __device__ members}}
+// expected-note@-7 {{candidate constructor (the implicit copy constructor}} not viable
+// expected-note@-8 {{candidate constructor (the implicit move constructor}} not viable
 
 void hostfoo2() {
-  C2_with_collision c; // expected-error {{implicitly-deleted default constructor}}
+  C2_with_collision c; // expected-error {{no matching constructor}}
 }
 
 //------------------------------------------------------------------------------
@@ -43,10 +49,13 @@ struct C3_with_collision : A1_with_host_ctor {
   B1_with_device_ctor bb;
 };
 
-// expected-error@-4 {{implicit default constructor inferred target collision: call to both __host__ and __device__ members}}
+// expected-note@-4 {{candidate constructor (the implicit default constructor}} not viable
+// expected-note@-5 {{implicit default constructor inferred target collision: call to both __host__ and __device__ members}}
+// expected-note@-6 {{candidate constructor (the implicit copy constructor}} not viable
+// expected-note@-7 {{candidate constructor (the implicit move constructor}} not viable
 
 void hostfoo3() {
-  C3_with_collision c; // expected-error {{implicitly-deleted default constructor}}
+  C3_with_collision c; // expected-error {{no matching constructor}}
 }
 
 //------------------------------------------------------------------------------
@@ -65,11 +74,13 @@ struct B4_with_device_copy_ctor {
 struct C4_with_collision : A4_with_host_copy_ctor, B4_with_device_copy_ctor {
 };
 
-// expected-error@-3 {{implicit copy constructor inferred target collision}}
+// expected-note@-3 {{candidate constructor (the implicit default constructor}} not viable
+// expected-note@-4 {{implicit copy constructor inferred target collision}}
+// expected-note@-5 {{candidate constructor (the implicit copy constructor}} not viable
 
 void hostfoo4() {
   C4_with_collision c;
-  C4_with_collision c2 = c; // expected-error {{implicitly-deleted copy constructor}}
+  C4_with_collision c2 = c; // expected-error {{no matching constructor}}
 }
 
 //------------------------------------------------------------------------------

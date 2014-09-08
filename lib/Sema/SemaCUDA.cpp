@@ -38,6 +38,9 @@ ExprResult Sema::ActOnCUDAExecConfigExpr(Scope *S, SourceLocation LLLLoc,
 
 /// IdentifyCUDATarget - Determine the CUDA compilation target for this function
 Sema::CUDAFunctionTarget Sema::IdentifyCUDATarget(const FunctionDecl *D) {
+  if (D->hasAttr<CUDAInvalidTargetAttr>())
+    return CFT_InvalidTarget;
+
   if (D->hasAttr<CUDAGlobalAttr>())
     return CFT_Global;
 
@@ -58,6 +61,11 @@ bool Sema::CheckCUDATarget(const FunctionDecl *Caller,
 
 bool Sema::CheckCUDATarget(CUDAFunctionTarget CallerTarget,
                            CUDAFunctionTarget CalleeTarget) {
+  // If one of the targets is invalid, the check always fails, no matter what
+  // the other target is.
+  if (CallerTarget == CFT_InvalidTarget || CalleeTarget == CFT_InvalidTarget)
+    return true;
+
   // CUDA B.1.1 "The __device__ qualifier declares a function that is...
   // Callable from the device only."
   if (CallerTarget == CFT_Host && CalleeTarget == CFT_Device)
@@ -161,10 +169,10 @@ bool Sema::inferCUDATargetForImplicitSpecialMember(CXXRecordDecl *ClassDecl,
       if (ResolutionError) {
         if (Diagnose) {
           Diag(ClassDecl->getLocation(),
-               diag::err_implicit_member_target_infer_collision)
-              << (unsigned)CSM << InferredTarget.getValue()
-              << BaseMethodTarget;
+               diag::note_implicit_member_target_infer_collision)
+              << (unsigned)CSM << InferredTarget.getValue() << BaseMethodTarget;
         }
+        MemberDecl->addAttr(CUDAInvalidTargetAttr::CreateImplicit(Context));
         return true;
       }
     }
@@ -206,10 +214,11 @@ bool Sema::inferCUDATargetForImplicitSpecialMember(CXXRecordDecl *ClassDecl,
       if (ResolutionError) {
         if (Diagnose) {
           Diag(ClassDecl->getLocation(),
-               diag::err_implicit_member_target_infer_collision)
+               diag::note_implicit_member_target_infer_collision)
               << (unsigned)CSM << InferredTarget.getValue()
               << FieldMethodTarget;
         }
+        MemberDecl->addAttr(CUDAInvalidTargetAttr::CreateImplicit(Context));
         return true;
       }
     }

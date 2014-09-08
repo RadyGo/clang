@@ -9140,7 +9140,47 @@ void DiagnoseBadTarget(Sema &S, OverloadCandidate *Cand) {
   OverloadCandidateKind FnKind = ClassifyOverloadCandidate(S, Callee, FnDesc);
 
   S.Diag(Callee->getLocation(), diag::note_ovl_candidate_bad_target)
-      << (unsigned) FnKind << CalleeTarget << CallerTarget;
+      << (unsigned)FnKind << CalleeTarget << CallerTarget;
+
+  // This could be an implicit constructor for which we could not infer the
+  // target due to a collsion. Diagnose that case.
+  CXXMethodDecl *Meth = dyn_cast<CXXMethodDecl>(Callee);
+  if (Meth != nullptr && Meth->isImplicit()) {
+    CXXRecordDecl *ParentClass = Meth->getParent();
+    Sema::CXXSpecialMember CSM;
+
+    switch (FnKind) {
+    default:
+      return;
+    case oc_implicit_default_constructor:
+      CSM = Sema::CXXDefaultConstructor;
+      break;
+    case oc_implicit_copy_constructor:
+      CSM = Sema::CXXCopyConstructor;
+      break;
+    case oc_implicit_move_constructor:
+      CSM = Sema::CXXMoveConstructor;
+      break;
+    case oc_implicit_copy_assignment:
+      CSM = Sema::CXXCopyAssignment;
+      break;
+    case oc_implicit_move_assignment:
+      CSM = Sema::CXXMoveAssignment;
+      break;
+    };
+
+    bool ConstRHS = false;
+    if (Meth->getNumParams()) {
+      if (const ReferenceType *RT =
+              Meth->getParamDecl(0)->getType()->getAs<ReferenceType>()) {
+        ConstRHS = RT->getPointeeType().isConstQualified();
+      }
+    }
+
+    S.inferCUDATargetForImplicitSpecialMember(ParentClass, CSM, Meth,
+                                              /* ConstRHS */ ConstRHS,
+                                              /* Diagnose */ true);
+  }
 }
 
 void DiagnoseFailedEnableIfAttr(Sema &S, OverloadCandidate *Cand) {

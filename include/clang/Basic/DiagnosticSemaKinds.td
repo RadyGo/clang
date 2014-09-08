@@ -3024,9 +3024,9 @@ def note_ovl_candidate_bad_target : Note<
     "function (the implicit copy assignment operator)|"
     "function (the implicit move assignment operator)|"
     "constructor (inherited)}0 not viable: call to "
-    "%select{__device__|__global__|__host__|__host__ __device__}1 function from"
-    " %select{__device__|__global__|__host__|__host__ __device__}2 function">;
-def err_implicit_member_target_infer_collision : Error<
+    "%select{__device__|__global__|__host__|__host__ __device__|invalid}1 function from"
+    " %select{__device__|__global__|__host__|__host__ __device__|invalid}2 function">;
+def note_implicit_member_target_infer_collision : Note<
     "implicit %select{"
     "default constructor|"
     "copy constructor|"
