@@ -8615,14 +8615,6 @@ void Sema::DefineImplicitDefaultConstructor(SourceLocation CurrentLocation,
   }
 
   DiagnoseUninitializedFields(*this, Constructor);
-
-  if (getLangOpts().CUDA) {
-    // Diagnose CUDA potential target inference errors.
-    inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXDefaultConstructor,
-                                            Constructor,
-                                            /* ConstRHS */ false,
-                                            /* Diagnose */ true);
-  }
 }
 
 void Sema::ActOnFinishDelayedMemberInitializers(Decl *D) {
@@ -9095,14 +9087,6 @@ void Sema::DefineImplicitDestructor(SourceLocation CurrentLocation,
 
   if (ASTMutationListener *L = getASTMutationListener()) {
     L->CompletedImplicitDefinition(Destructor);
-  }
-
-  if (getLangOpts().CUDA) {
-    // Diagnose CUDA potential target inference errors.
-    inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXDestructor,
-                                            Destructor,
-                                            /* ConstRHS */ false,
-                                            /* Diagnose */ true);
   }
 }
 
@@ -9966,15 +9950,6 @@ void Sema::DefineImplicitCopyAssignment(SourceLocation CurrentLocation,
   if (ASTMutationListener *L = getASTMutationListener()) {
     L->CompletedImplicitDefinition(CopyAssignOperator);
   }
-
-  if (getLangOpts().CUDA) {
-    // Diagnose CUDA potential target inference errors.
-    bool Const = ClassDecl->implicitCopyAssignmentHasConstParam();
-    inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXCopyAssignment,
-                                            CopyAssignOperator,
-                                            /* ConstRHS */ Const,
-                                            /* Diagnose */ true);
-  }
 }
 
 Sema::ImplicitExceptionSpecification
@@ -10409,14 +10384,6 @@ void Sema::DefineImplicitMoveAssignment(SourceLocation CurrentLocation,
   if (ASTMutationListener *L = getASTMutationListener()) {
     L->CompletedImplicitDefinition(MoveAssignOperator);
   }
-
-  if (getLangOpts().CUDA) {
-    // Diagnose CUDA potential target inference errors.
-    inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXMoveAssignment,
-                                            MoveAssignOperator,
-                                            /* ConstRHS */ false,
-                                            /* Diagnose */ true);
-  }
 }
 
 Sema::ImplicitExceptionSpecification
@@ -10587,15 +10554,6 @@ void Sema::DefineImplicitCopyConstructor(SourceLocation CurrentLocation,
 
   if (ASTMutationListener *L = getASTMutationListener()) {
     L->CompletedImplicitDefinition(CopyConstructor);
-  }
-
-  if (getLangOpts().CUDA) {
-    // Diagnose CUDA potential target inference errors.
-    bool Const = ClassDecl->implicitCopyConstructorHasConstParam();
-    inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXCopyConstructor,
-                                            CopyConstructor,
-                                            /* ConstRHS */ Const,
-                                            /* Diagnose */ true);
   }
 }
 
@@ -10769,14 +10727,6 @@ void Sema::DefineImplicitMoveConstructor(SourceLocation CurrentLocation,
 
   if (ASTMutationListener *L = getASTMutationListener()) {
     L->CompletedImplicitDefinition(MoveConstructor);
-  }
-
-  if (getLangOpts().CUDA) {
-    // Diagnose CUDA potential target inference errors.
-    inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXMoveConstructor,
-                                            MoveConstructor,
-                                            /* ConstRHS */ false,
-                                            /* Diagnose */ true);
   }
 }
 
