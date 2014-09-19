@@ -542,7 +542,7 @@ def CUDAHost : InheritableAttr {
 }
 
 def CUDAInvalidTarget : InheritableAttr {
-  let Spellings = [GNU<"invalid_target">];
+  let Spellings = [];
   let Subjects = SubjectList<[Function]>;
   let LangOpts = [CUDA];
   let Documentation = [Undocumented];

@@ -97,8 +97,12 @@ static bool
 resolveCalleeCUDATargetConflict(Sema::CUDAFunctionTarget Target1,
                                 Sema::CUDAFunctionTarget Target2,
                                 Sema::CUDAFunctionTarget *ResolvedTarget) {
-  assert((Target1 != Sema::CFT_Global && Target2 != Sema::CFT_Global) &&
-         "Special members cannot be marked global");
+  if (Target1 == Sema::CFT_Global && Target2 == Sema::CFT_Global) {
+    // TODO: this shouldn't happen, really. Methods cannot be marked __global__.
+    // Clang should detect this earlier and produce an error. Then this
+    // condition can be changed to an assertion.
+    return true;
+  }
 
   if (Target1 == Sema::CFT_HostDevice) {
     *ResolvedTarget = Target2;

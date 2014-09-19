@@ -1,4 +1,3 @@
-//===------ SemaDeclCXX.cpp - Semantic Analysis for C++ Declarations ------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -6991,7 +6990,7 @@ NamespaceDecl *Sema::getOrCreateStdNamespace() {
                                          /*PrevDecl=*/nullptr);
     getStdNamespace()->setImplicit(true);
   }
-  
+
   return getStdNamespace();
 }
 
@@ -8547,7 +8546,6 @@ CXXConstructorDecl *Sema::DeclareImplicitDefaultConstructor(
       /*isImplicitlyDeclared=*/true, Constexpr);
   DefaultCon->setAccess(AS_public);
   DefaultCon->setDefaulted();
-  DefaultCon->setImplicit();
 
   if (getLangOpts().CUDA) {
     inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXDefaultConstructor,
@@ -9014,7 +9012,6 @@ CXXDestructorDecl *Sema::DeclareImplicitDestructor(CXXRecordDecl *ClassDecl) {
                                   /*isImplicitlyDeclared=*/true);
   Destructor->setAccess(AS_public);
   Destructor->setDefaulted();
-  Destructor->setImplicit();
 
   if (getLangOpts().CUDA) {
     inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXDestructor,
@@ -10468,7 +10465,6 @@ CXXConstructorDecl *Sema::DeclareImplicitCopyConstructor(
       Constexpr);
   CopyConstructor->setAccess(AS_public);
   CopyConstructor->setDefaulted();
-  CopyConstructor->setImplicit();
 
   if (getLangOpts().CUDA) {
     inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXCopyConstructor,
@@ -10646,7 +10642,6 @@ CXXConstructorDecl *Sema::DeclareImplicitMoveConstructor(
       Constexpr);
   MoveConstructor->setAccess(AS_public);
   MoveConstructor->setDefaulted();
-  MoveConstructor->setImplicit();
 
   if (getLangOpts().CUDA) {
     inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXMoveConstructor,
