@@ -17,8 +17,8 @@ __device__ void foo1(S1& s) {
 // Test 2: host method called from device function, for overloaded method
 
 struct S2 {
-  void method(int) {} // expected-note {{candidate function not viable}}
-  void method(float) {} // expected-note {{candidate function not viable}}
+  void method(int) {} // expected-note {{candidate function not viable: call to __host__ function from __device__ function}}
+  void method(float) {} // expected-note {{candidate function not viable: call to __host__ function from __device__ function}}
 };
 
 __device__ void foo2(S2& s, int i, float f) {
