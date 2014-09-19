@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "RAIIObjectsForParser.h"
+#include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Parse/ParseDiagnostic.h"
 #include "clang/Parse/Parser.h"
@@ -661,6 +662,11 @@ bool Parser::HandlePragmaMSSegment(StringRef PragmaName,
 // #pragma init_seg({ compiler | lib | user | "section-name" [, func-name]} )
 bool Parser::HandlePragmaMSInitSeg(StringRef PragmaName,
                                    SourceLocation PragmaLocation) {
+  if (getTargetInfo().getTriple().getEnvironment() != llvm::Triple::MSVC) {
+    PP.Diag(PragmaLocation, diag::warn_pragma_init_seg_unsupported_target);
+    return false;
+  }
+
   if (ExpectAndConsume(tok::l_paren, diag::warn_pragma_expected_lparen,
                        PragmaName))
     return false;
@@ -720,6 +726,7 @@ struct PragmaLoopHintInfo {
   Token Option;
   Token Value;
   bool HasValue;
+  PragmaLoopHintInfo() : HasValue(false) {}
 };
 
 bool Parser::HandlePragmaLoopHint(LoopHint &Hint) {
@@ -732,7 +739,11 @@ bool Parser::HandlePragmaLoopHint(LoopHint &Hint) {
   Hint.PragmaNameLoc = IdentifierLoc::create(
       Actions.Context, Info->PragmaName.getLocation(), PragmaNameInfo);
 
-  IdentifierInfo *OptionInfo = Info->Option.getIdentifierInfo();
+  // It is possible that the loop hint has no option identifier, such as
+  // #pragma unroll(4).
+  IdentifierInfo *OptionInfo = Info->Option.is(tok::identifier)
+                                   ? Info->Option.getIdentifierInfo()
+                                   : nullptr;
   Hint.OptionLoc = IdentifierLoc::create(
       Actions.Context, Info->Option.getLocation(), OptionInfo);
 
@@ -1965,6 +1976,7 @@ void PragmaUnrollHintHandler::HandlePragma(Preprocessor &PP,
     // nounroll or unroll pragma without an argument.
     Info->PragmaName = PragmaName;
     Info->HasValue = false;
+    Info->Option.startToken();
   } else if (PragmaName.getIdentifierInfo()->getName() == "nounroll") {
     PP.Diag(Tok.getLocation(), diag::warn_pragma_extra_tokens_at_eol)
         << "nounroll";
@@ -1977,7 +1989,9 @@ void PragmaUnrollHintHandler::HandlePragma(Preprocessor &PP,
     if (ValueInParens)
       PP.Lex(Tok);
 
-    if (ParseLoopHintValue(PP, Tok, PragmaName, Token(), ValueInParens, *Info))
+    Token Option;
+    Option.startToken();
+    if (ParseLoopHintValue(PP, Tok, PragmaName, Option, ValueInParens, *Info))
       return;
 
     // In CUDA, the argument to '#pragma unroll' should not be contained in

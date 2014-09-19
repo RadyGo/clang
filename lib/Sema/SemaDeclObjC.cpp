@@ -118,10 +118,7 @@ void Sema::CheckObjCMethodOverride(ObjCMethodDecl *NewMethod,
     // a suitable return type, but the new (overriding) method does not have
     // a suitable return type.
     QualType ResultType = NewMethod->getReturnType();
-    SourceRange ResultTypeRange;
-    if (const TypeSourceInfo *ResultTypeInfo =
-            NewMethod->getReturnTypeSourceInfo())
-      ResultTypeRange = ResultTypeInfo->getTypeLoc().getSourceRange();
+    SourceRange ResultTypeRange = NewMethod->getReturnTypeSourceRange();
     
     // Figure out which class this method is part of, if any.
     ObjCInterfaceDecl *CurrentClass 
@@ -204,15 +201,13 @@ bool Sema::CheckARCMethodDecl(ObjCMethodDecl *method) {
   case OMF_autorelease:
   case OMF_retainCount:
   case OMF_self:
+  case OMF_initialize:
   case OMF_performSelector:
     return false;
 
   case OMF_dealloc:
     if (!Context.hasSameType(method->getReturnType(), Context.VoidTy)) {
-      SourceRange ResultTypeRange;
-      if (const TypeSourceInfo *ResultTypeInfo =
-              method->getReturnTypeSourceInfo())
-        ResultTypeRange = ResultTypeInfo->getTypeLoc().getSourceRange();
+      SourceRange ResultTypeRange = method->getReturnTypeSourceRange();
       if (ResultTypeRange.isInvalid())
         Diag(method->getLocation(), diag::error_dealloc_bad_result_type)
             << method->getReturnType()
@@ -359,6 +354,7 @@ void Sema::ActOnStartOfObjCMethodDef(Scope *FnBodyScope, Decl *D) {
     case OMF_copy:
     case OMF_new:
     case OMF_self:
+    case OMF_initialize:
     case OMF_performSelector:
       break;
     }
@@ -1362,9 +1358,9 @@ static bool CheckMethodOverrideReturn(Sema &S,
                   ? diag::warn_conflicting_overriding_ret_type_modifiers
                   : diag::warn_conflicting_ret_type_modifiers))
           << MethodImpl->getDeclName()
-          << getTypeRange(MethodImpl->getReturnTypeSourceInfo());
+          << MethodImpl->getReturnTypeSourceRange();
       S.Diag(MethodDecl->getLocation(), diag::note_previous_declaration)
-          << getTypeRange(MethodDecl->getReturnTypeSourceInfo());
+          << MethodDecl->getReturnTypeSourceRange();
     }
     else
       return false;
@@ -1402,11 +1398,11 @@ static bool CheckMethodOverrideReturn(Sema &S,
   S.Diag(MethodImpl->getLocation(), DiagID)
       << MethodImpl->getDeclName() << MethodDecl->getReturnType()
       << MethodImpl->getReturnType()
-      << getTypeRange(MethodImpl->getReturnTypeSourceInfo());
+      << MethodImpl->getReturnTypeSourceRange();
   S.Diag(MethodDecl->getLocation(), IsOverridingMode
                                         ? diag::note_previous_declaration
                                         : diag::note_previous_definition)
-      << getTypeRange(MethodDecl->getReturnTypeSourceInfo());
+      << MethodDecl->getReturnTypeSourceRange();
   return false;
 }
 
@@ -1521,6 +1517,7 @@ static bool checkMethodFamilyMismatch(Sema &S, ObjCMethodDecl *impl,
   case OMF_finalize:
   case OMF_retainCount:
   case OMF_self:
+  case OMF_initialize:
   case OMF_performSelector:
     // Mismatches for these methods don't change ownership
     // conventions, so we don't care.
@@ -2319,6 +2316,23 @@ static bool isAcceptableMethodMismatch(ObjCMethodDecl *chosen,
   // Don't complain about mismatches for -length if the method we
   // chose has an integral result type.
   return (chosen->getReturnType()->isIntegerType());
+}
+
+bool Sema::CollectMultipleMethodsInGlobalPool(Selector Sel,
+                                              SmallVectorImpl<ObjCMethodDecl*>& Methods,
+                                              bool instance) {
+  if (ExternalSource)
+    ReadMethodPool(Sel);
+
+  GlobalMethodPool::iterator Pos = MethodPool.find(Sel);
+  if (Pos == MethodPool.end())
+    return false;
+  // Gather the non-hidden methods.
+  ObjCMethodList &MethList = instance ? Pos->second.first : Pos->second.second;
+  for (ObjCMethodList *M = &MethList; M; M = M->getNext())
+    if (M->Method && !M->Method->isHidden())
+      Methods.push_back(M->Method);
+  return (Methods.size() > 1);
 }
 
 ObjCMethodDecl *Sema::LookupMethodInGlobalPool(Selector Sel, SourceRange R,
@@ -3248,6 +3262,7 @@ Decl *Sema::ActOnMethodDeclaration(
     case OMF_mutableCopy:
     case OMF_release:
     case OMF_retainCount:
+    case OMF_initialize:
     case OMF_performSelector:
       break;
       

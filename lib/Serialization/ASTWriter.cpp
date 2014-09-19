@@ -1134,17 +1134,28 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
 
   // Module map file
   if (WritingModule) {
-    BitCodeAbbrev *Abbrev = new BitCodeAbbrev();
-    Abbrev->Add(BitCodeAbbrevOp(MODULE_MAP_FILE));
-    Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob)); // Filename
-    unsigned AbbrevCode = Stream.EmitAbbrev(Abbrev);
+    Record.clear();
+    auto addModMap = [&](const FileEntry *F) {
+      SmallString<128> ModuleMap(F->getName());
+      llvm::sys::fs::make_absolute(ModuleMap);
+      AddString(ModuleMap.str(), Record);
+    };
 
-    assert(WritingModule->ModuleMap && "missing module map");
-    SmallString<128> ModuleMap(WritingModule->ModuleMap->getName());
-    llvm::sys::fs::make_absolute(ModuleMap);
-    RecordData Record;
-    Record.push_back(MODULE_MAP_FILE);
-    Stream.EmitRecordWithBlob(AbbrevCode, Record, ModuleMap.str());
+    auto &Map = PP.getHeaderSearchInfo().getModuleMap();
+
+    // Primary module map file.
+    addModMap(Map.getModuleMapFileForUniquing(WritingModule));
+
+    // Additional module map files.
+    if (auto *AdditionalModMaps = Map.getAdditionalModuleMapFiles(WritingModule)) {
+      Record.push_back(AdditionalModMaps->size());
+      for (const FileEntry *F : *AdditionalModMaps)
+        addModMap(F);
+    } else {
+      Record.push_back(0);
+    }
+
+    Stream.EmitRecord(MODULE_MAP_FILE, Record);
   }
 
   // Imports
@@ -1226,6 +1237,9 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
   Record.push_back(DiagOpts.Warnings.size());
   for (unsigned I = 0, N = DiagOpts.Warnings.size(); I != N; ++I)
     AddString(DiagOpts.Warnings[I], Record);
+  Record.push_back(DiagOpts.Remarks.size());
+  for (unsigned I = 0, N = DiagOpts.Remarks.size(); I != N; ++I)
+    AddString(DiagOpts.Remarks[I], Record);
   // Note: we don't serialize the log or serialization file names, because they
   // are generally transient files and will almost always be overridden.
   Stream.EmitRecord(DIAGNOSTIC_OPTIONS, Record);
@@ -3465,6 +3479,31 @@ void ASTWriter::WriteIdentifierTable(Preprocessor &PP,
 // DeclContext's Name Lookup Table Serialization
 //===----------------------------------------------------------------------===//
 
+/// Determine the declaration that should be put into the name lookup table to
+/// represent the given declaration in this module. This is usually D itself,
+/// but if D was imported and merged into a local declaration, we want the most
+/// recent local declaration instead. The chosen declaration will be the most
+/// recent declaration in any module that imports this one.
+static NamedDecl *getDeclForLocalLookup(NamedDecl *D) {
+  if (!D->isFromASTFile())
+    return D;
+
+  if (Decl *Redecl = D->getPreviousDecl()) {
+    // For Redeclarable decls, a prior declaration might be local.
+    for (; Redecl; Redecl = Redecl->getPreviousDecl())
+      if (!Redecl->isFromASTFile())
+        return cast<NamedDecl>(Redecl);
+  } else if (Decl *First = D->getCanonicalDecl()) {
+    // For Mergeable decls, the first decl might be local.
+    if (!First->isFromASTFile())
+      return cast<NamedDecl>(First);
+  }
+
+  // All declarations are imported. Our most recent declaration will also be
+  // the most recent one in anyone who imports us.
+  return D;
+}
+
 namespace {
 // Trait used for the on-disk hash table used in the method pool.
 class ASTDeclContextNameLookupTrait {
@@ -3582,7 +3621,7 @@ public:
     LE.write<uint16_t>(Lookup.size());
     for (DeclContext::lookup_iterator I = Lookup.begin(), E = Lookup.end();
          I != E; ++I)
-      LE.write<uint32_t>(Writer.GetDeclRef(*I));
+      LE.write<uint32_t>(Writer.GetDeclRef(getDeclForLocalLookup(*I)));
 
     assert(Out.tell() - Start == DataLen && "Data length is wrong");
   }
@@ -3628,7 +3667,7 @@ void ASTWriter::AddUpdatedDeclContext(const DeclContext *DC) {
                             [&](DeclarationName Name,
                                 DeclContext::lookup_const_result Result) {
       for (auto *Decl : Result)
-        GetDeclRef(Decl);
+        GetDeclRef(getDeclForLocalLookup(Decl));
     });
   }
 }
@@ -3825,6 +3864,8 @@ void ASTWriter::WriteRedeclarations() {
           FirstFromAST = Prev;
       }
 
+      // FIXME: Do we need to do this for the first declaration from each
+      // redeclaration chain that was merged into this one?
       Chain->MergedDecls[FirstFromAST].push_back(getDeclID(First));
     }
 
@@ -4243,6 +4284,11 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
     }
   }
 
+  // Build a record containing all of the UnusedLocalTypedefNameCandidates.
+  RecordData UnusedLocalTypedefNameCandidates;
+  for (const TypedefNameDecl *TD : SemaRef.UnusedLocalTypedefNameCandidates)
+    AddDeclRef(TD, UnusedLocalTypedefNameCandidates);
+
   // Build a record containing all of dynamic classes declarations.
   RecordData DynamicClasses;
   AddLazyVectorDecls(*this, SemaRef.DynamicClasses, DynamicClasses);
@@ -4417,6 +4463,9 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
         StringRef FileName = (*M)->FileName;
         LE.write<uint16_t>(FileName.size());
         Out.write(FileName.data(), FileName.size());
+
+        // These values should be unique within a chain, since they will be read
+        // as keys into ContinuousRangeMaps.
         LE.write<uint32_t>((*M)->SLocEntryBaseOffset);
         LE.write<uint32_t>((*M)->BaseIdentifierID);
         LE.write<uint32_t>((*M)->BaseMacroID);
@@ -4517,6 +4566,11 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
   if (!DynamicClasses.empty())
     Stream.EmitRecord(DYNAMIC_CLASSES, DynamicClasses);
 
+  // Write the record containing potentially unused local typedefs.
+  if (!UnusedLocalTypedefNameCandidates.empty())
+    Stream.EmitRecord(UNUSED_LOCAL_TYPEDEF_NAME_CANDIDATES,
+                      UnusedLocalTypedefNameCandidates);
+
   // Write the record containing pending implicit instantiations.
   if (!PendingInstantiations.empty())
     Stream.EmitRecord(PENDING_IMPLICIT_INSTANTIATIONS, PendingInstantiations);
@@ -4563,10 +4617,13 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
       auto Cmp = [](const ModuleInfo &A, const ModuleInfo &B) {
         return A.ID < B.ID;
       };
+      auto Eq = [](const ModuleInfo &A, const ModuleInfo &B) {
+        return A.ID == B.ID;
+      };
 
       // Sort and deduplicate module IDs.
       std::sort(Imports.begin(), Imports.end(), Cmp);
-      Imports.erase(std::unique(Imports.begin(), Imports.end(), Cmp),
+      Imports.erase(std::unique(Imports.begin(), Imports.end(), Eq),
                     Imports.end());
 
       RecordData ImportedModules;
@@ -4626,15 +4683,15 @@ void ASTWriter::WriteDeclUpdatesBlocks(RecordDataImpl &OffsetsRecord) {
         Record.push_back(GetDeclRef(Update.getDecl()));
         break;
 
-      case UPD_CXX_INSTANTIATED_STATIC_DATA_MEMBER:
-        AddSourceLocation(Update.getLoc(), Record);
-        break;
-
-      case UPD_CXX_INSTANTIATED_FUNCTION_DEFINITION:
+      case UPD_CXX_ADDED_FUNCTION_DEFINITION:
         // An updated body is emitted last, so that the reader doesn't need
         // to skip over the lazy body to reach statements for other records.
         Record.pop_back();
         HasUpdatedBody = true;
+        break;
+
+      case UPD_CXX_INSTANTIATED_STATIC_DATA_MEMBER:
+        AddSourceLocation(Update.getLoc(), Record);
         break;
 
       case UPD_CXX_INSTANTIATED_CLASS_DEFINITION: {
@@ -4676,8 +4733,8 @@ void ASTWriter::WriteDeclUpdatesBlocks(RecordDataImpl &OffsetsRecord) {
         // Instantiation may change attributes; write them all out afresh.
         Record.push_back(D->hasAttrs());
         if (Record.back())
-          WriteAttributes(ArrayRef<const Attr*>(D->getAttrs().begin(),
-                                                D->getAttrs().size()), Record);
+          WriteAttributes(llvm::makeArrayRef(D->getAttrs().begin(),
+                                             D->getAttrs().size()), Record);
 
         // FIXME: Ensure we don't get here for explicit instantiations.
         break;
@@ -4706,10 +4763,12 @@ void ASTWriter::WriteDeclUpdatesBlocks(RecordDataImpl &OffsetsRecord) {
 
     if (HasUpdatedBody) {
       const FunctionDecl *Def = cast<FunctionDecl>(D);
-      Record.push_back(UPD_CXX_INSTANTIATED_FUNCTION_DEFINITION);
+      Record.push_back(UPD_CXX_ADDED_FUNCTION_DEFINITION);
       Record.push_back(Def->isInlined());
       AddSourceLocation(Def->getInnerLocStart(), Record);
       AddFunctionDefinition(Def, Record);
+      if (auto *DD = dyn_cast<CXXDestructorDecl>(Def))
+        Record.push_back(GetDeclRef(DD->getOperatorDelete()));
     }
 
     OffsetsRecord.push_back(GetDeclRef(D));
@@ -5073,6 +5132,30 @@ void ASTWriter::AddDeclarationName(DeclarationName Name, RecordDataImpl &Record)
     // No extra data to emit
     break;
   }
+}
+
+unsigned ASTWriter::getAnonymousDeclarationNumber(const NamedDecl *D) {
+  assert(needsAnonymousDeclarationNumber(D) &&
+         "expected an anonymous declaration");
+
+  // Number the anonymous declarations within this context, if we've not
+  // already done so.
+  auto It = AnonymousDeclarationNumbers.find(D);
+  if (It == AnonymousDeclarationNumbers.end()) {
+    unsigned Index = 0;
+    for (Decl *LexicalD : D->getLexicalDeclContext()->decls()) {
+      auto *ND = dyn_cast<NamedDecl>(LexicalD);
+      if (!ND || !needsAnonymousDeclarationNumber(ND))
+        continue;
+      AnonymousDeclarationNumbers[ND] = Index++;
+    }
+
+    It = AnonymousDeclarationNumbers.find(D);
+    assert(It != AnonymousDeclarationNumbers.end() &&
+           "declaration not found within its lexical context");
+  }
+
+  return It->second;
 }
 
 void ASTWriter::AddDeclarationNameLoc(const DeclarationNameLoc &DNLoc,
@@ -5512,6 +5595,7 @@ void ASTWriter::AddCXXDefinitionData(const CXXRecordDecl *D, RecordDataImpl &Rec
       Record.push_back(Capture.getCaptureKind());
       switch (Capture.getCaptureKind()) {
       case LCK_This:
+      case LCK_VLAType:
         break;
       case LCK_ByCopy:
       case LCK_ByRef:
@@ -5701,9 +5785,8 @@ void ASTWriter::CompletedImplicitDefinition(const FunctionDecl *D) {
   if (!D->isFromASTFile())
     return; // Declaration not imported from PCH.
 
-  // Implicit decl from a PCH was defined.
-  // FIXME: Should implicit definition be a separate FunctionDecl?
-  RewriteDecl(D);
+  // Implicit function decl from a PCH was defined.
+  DeclUpdates[D].push_back(DeclUpdate(UPD_CXX_ADDED_FUNCTION_DEFINITION));
 }
 
 void ASTWriter::FunctionDefinitionInstantiated(const FunctionDecl *D) {
@@ -5711,10 +5794,8 @@ void ASTWriter::FunctionDefinitionInstantiated(const FunctionDecl *D) {
   if (!D->isFromASTFile())
     return;
 
-  // Since the actual instantiation is delayed, this really means that we need
-  // to update the instantiation location.
   DeclUpdates[D].push_back(
-      DeclUpdate(UPD_CXX_INSTANTIATED_FUNCTION_DEFINITION));
+      DeclUpdate(UPD_CXX_ADDED_FUNCTION_DEFINITION));
 }
 
 void ASTWriter::StaticDataMemberInstantiated(const VarDecl *D) {

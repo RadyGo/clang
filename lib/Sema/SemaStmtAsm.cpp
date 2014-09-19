@@ -121,6 +121,20 @@ StmtResult Sema::ActOnGCCAsmStmt(SourceLocation AsmLoc, bool IsSimple,
       return StmtError();
 
     OutputConstraintInfos.push_back(Info);
+
+    const Type *Ty = OutputExpr->getType().getTypePtr();
+
+    // If this is a dependent type, just continue. We don't know the size of a
+    // dependent type.
+    if (Ty->isDependentType())
+      continue;
+
+    unsigned Size = Context.getTypeSize(Ty);
+    if (!Context.getTargetInfo().validateOutputSize(Literal->getString(),
+                                                    Size))
+      return StmtError(Diag(OutputExpr->getLocStart(),
+                            diag::err_asm_invalid_output_size)
+                       << Info.getConstraintStr());
   }
 
   SmallVector<TargetInfo::ConstraintInfo, 4> InputConstraintInfos;
@@ -257,11 +271,22 @@ StmtResult Sema::ActOnGCCAsmStmt(SourceLocation AsmLoc, bool IsSimple,
       continue;
 
     unsigned Size = Context.getTypeSize(Ty);
-    if (!Context.getTargetInfo()
-          .validateConstraintModifier(Literal->getString(), Piece.getModifier(),
-                                      Size))
+    std::string SuggestedModifier;
+    if (!Context.getTargetInfo().validateConstraintModifier(
+            Literal->getString(), Piece.getModifier(), Size,
+            SuggestedModifier)) {
       Diag(Exprs[ConstraintIdx]->getLocStart(),
            diag::warn_asm_mismatched_size_modifier);
+
+      if (!SuggestedModifier.empty()) {
+        auto B = Diag(Piece.getRange().getBegin(),
+                      diag::note_asm_missing_constraint_modifier)
+                 << SuggestedModifier;
+        SuggestedModifier = "%" + SuggestedModifier + Piece.getString();
+        B.AddFixItHint(FixItHint::CreateReplacement(Piece.getRange(),
+                                                    SuggestedModifier));
+      }
+    }
   }
 
   // Validate tied input operands for type mismatches.
@@ -394,6 +419,19 @@ ExprResult Sema::LookupInlineAsmIdentifier(CXXScopeSpec &SS,
   Result = CheckPlaceholderExpr(Result.get());
   if (!Result.isUsable()) return Result;
 
+  // Referring to parameters is not allowed in naked functions.
+  if (DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(Result.get())) {
+    if (ParmVarDecl *Parm = dyn_cast<ParmVarDecl>(DRE->getDecl())) {
+      if (FunctionDecl *Func = dyn_cast<FunctionDecl>(Parm->getDeclContext())) {
+        if (Func->hasAttr<NakedAttr>()) {
+          Diag(Id.getLocStart(), diag::err_asm_naked_parm_ref);
+          Diag(Func->getAttr<NakedAttr>()->getLocation(), diag::note_attribute);
+          return ExprError();
+        }
+      }
+    }
+  }
+
   QualType T = Result.get()->getType();
 
   // For now, reject dependent types.
@@ -443,9 +481,10 @@ bool Sema::LookupInlineAsmField(StringRef Base, StringRef Member,
   NamedDecl *FoundDecl = BaseResult.getFoundDecl();
   if (VarDecl *VD = dyn_cast<VarDecl>(FoundDecl))
     RT = VD->getType()->getAs<RecordType>();
-  else if (TypedefNameDecl *TD = dyn_cast<TypedefNameDecl>(FoundDecl))
+  else if (TypedefNameDecl *TD = dyn_cast<TypedefNameDecl>(FoundDecl)) {
+    MarkAnyDeclReferenced(TD->getLocation(), TD, /*OdrUse=*/false);
     RT = TD->getUnderlyingType()->getAs<RecordType>();
-  else if (TypeDecl *TD = dyn_cast<TypeDecl>(FoundDecl))
+  } else if (TypeDecl *TD = dyn_cast<TypeDecl>(FoundDecl))
     RT = TD->getTypeForDecl()->getAs<RecordType>();
   if (!RT)
     return true;

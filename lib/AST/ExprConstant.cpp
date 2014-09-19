@@ -1329,7 +1329,7 @@ static bool CheckLiteralType(EvalInfo &Info, const Expr *E,
   // C++1y: A constant initializer for an object o [...] may also invoke
   // constexpr constructors for o and its subobjects even if those objects
   // are of non-literal class types.
-  if (Info.getLangOpts().CPlusPlus1y && This &&
+  if (Info.getLangOpts().CPlusPlus14 && This &&
       Info.EvaluatingDecl == This->getLValueBase())
     return true;
 
@@ -1352,6 +1352,11 @@ static bool CheckConstantExpression(EvalInfo &Info, SourceLocation DiagLoc,
       << true << Type;
     return false;
   }
+
+  // We allow _Atomic(T) to be initialized from anything that T can be
+  // initialized from.
+  if (const AtomicType *AT = Type->getAs<AtomicType>())
+    Type = AT->getValueType();
 
   // Core issue 1454: For a literal constant expression of array or class type,
   // each subobject of its value shall have been initialized by a constant
@@ -2075,6 +2080,64 @@ static void expandArray(APValue &Array, unsigned Index) {
   Array.swap(NewValue);
 }
 
+/// Determine whether a type would actually be read by an lvalue-to-rvalue
+/// conversion. If it's of class type, we may assume that the copy operation
+/// is trivial. Note that this is never true for a union type with fields
+/// (because the copy always "reads" the active member) and always true for
+/// a non-class type.
+static bool isReadByLvalueToRvalueConversion(QualType T) {
+  CXXRecordDecl *RD = T->getBaseElementTypeUnsafe()->getAsCXXRecordDecl();
+  if (!RD || (RD->isUnion() && !RD->field_empty()))
+    return true;
+  if (RD->isEmpty())
+    return false;
+
+  for (auto *Field : RD->fields())
+    if (isReadByLvalueToRvalueConversion(Field->getType()))
+      return true;
+
+  for (auto &BaseSpec : RD->bases())
+    if (isReadByLvalueToRvalueConversion(BaseSpec.getType()))
+      return true;
+
+  return false;
+}
+
+/// Diagnose an attempt to read from any unreadable field within the specified
+/// type, which might be a class type.
+static bool diagnoseUnreadableFields(EvalInfo &Info, const Expr *E,
+                                     QualType T) {
+  CXXRecordDecl *RD = T->getBaseElementTypeUnsafe()->getAsCXXRecordDecl();
+  if (!RD)
+    return false;
+
+  if (!RD->hasMutableFields())
+    return false;
+
+  for (auto *Field : RD->fields()) {
+    // If we're actually going to read this field in some way, then it can't
+    // be mutable. If we're in a union, then assigning to a mutable field
+    // (even an empty one) can change the active member, so that's not OK.
+    // FIXME: Add core issue number for the union case.
+    if (Field->isMutable() &&
+        (RD->isUnion() || isReadByLvalueToRvalueConversion(Field->getType()))) {
+      Info.Diag(E, diag::note_constexpr_ltor_mutable, 1) << Field;
+      Info.Note(Field->getLocation(), diag::note_declared_at);
+      return true;
+    }
+
+    if (diagnoseUnreadableFields(Info, E, Field->getType()))
+      return true;
+  }
+
+  for (auto &BaseSpec : RD->bases())
+    if (diagnoseUnreadableFields(Info, E, BaseSpec.getType()))
+      return true;
+
+  // All mutable fields were empty, and thus not actually read.
+  return false;
+}
+
 /// Kinds of access we can perform on an object, for diagnostics.
 enum AccessKinds {
   AK_Read,
@@ -2130,6 +2193,14 @@ findSubobject(EvalInfo &Info, const Expr *E, const CompleteObject &Obj,
     }
 
     if (I == N) {
+      // If we are reading an object of class type, there may still be more
+      // things we need to check: if there are any mutable subobjects, we
+      // cannot perform this read. (This only happens when performing a trivial
+      // copy or assignment.)
+      if (ObjType->isRecordType() && handler.AccessKind == AK_Read &&
+          diagnoseUnreadableFields(Info, E, ObjType))
+        return handler.failed();
+
       if (!handler.found(*O, ObjType))
         return false;
 
@@ -2486,7 +2557,7 @@ CompleteObject findCompleteObject(EvalInfo &Info, const Expr *E, AccessKinds AK,
     // Unless we're looking at a local variable or argument in a constexpr call,
     // the variable we're reading must be const.
     if (!Frame) {
-      if (Info.getLangOpts().CPlusPlus1y &&
+      if (Info.getLangOpts().CPlusPlus14 &&
           VD == Info.EvaluatingDecl.dyn_cast<const ValueDecl *>()) {
         // OK, we can read and modify an object if we're in the process of
         // evaluating its initializer, because its lifetime began in this
@@ -2602,7 +2673,7 @@ CompleteObject findCompleteObject(EvalInfo &Info, const Expr *E, AccessKinds AK,
   //
   // FIXME: Not all local state is mutable. Allow local constant subobjects
   // to be read here (but take care with 'mutable' fields).
-  if (Frame && Info.getLangOpts().CPlusPlus1y &&
+  if (Frame && Info.getLangOpts().CPlusPlus14 &&
       (Info.EvalStatus.HasSideEffects || Info.keepEvaluatingAfterFailure()))
     return CompleteObject();
 
@@ -2664,7 +2735,7 @@ static bool handleAssignment(EvalInfo &Info, const Expr *E, const LValue &LVal,
   if (LVal.Designator.Invalid)
     return false;
 
-  if (!Info.getLangOpts().CPlusPlus1y) {
+  if (!Info.getLangOpts().CPlusPlus14) {
     Info.Diag(E);
     return false;
   }
@@ -2785,7 +2856,7 @@ static bool handleCompoundAssignment(
   if (LVal.Designator.Invalid)
     return false;
 
-  if (!Info.getLangOpts().CPlusPlus1y) {
+  if (!Info.getLangOpts().CPlusPlus14) {
     Info.Diag(E);
     return false;
   }
@@ -2934,7 +3005,7 @@ static bool handleIncDec(EvalInfo &Info, const Expr *E, const LValue &LVal,
   if (LVal.Designator.Invalid)
     return false;
 
-  if (!Info.getLangOpts().CPlusPlus1y) {
+  if (!Info.getLangOpts().CPlusPlus14) {
     Info.Diag(E);
     return false;
   }
@@ -3981,7 +4052,7 @@ public:
 
     const FunctionDecl *FD = nullptr;
     LValue *This = nullptr, ThisVal;
-    ArrayRef<const Expr *> Args(E->getArgs(), E->getNumArgs());
+    auto Args = llvm::makeArrayRef(E->getArgs(), E->getNumArgs());
     bool HasQualifier = false;
 
     // Extract function decl and 'this' pointer from the callee.
@@ -4144,7 +4215,7 @@ public:
     return VisitUnaryPostIncDec(UO);
   }
   bool VisitUnaryPostIncDec(const UnaryOperator *UO) {
-    if (!Info.getLangOpts().CPlusPlus1y && !Info.keepEvaluatingAfterFailure())
+    if (!Info.getLangOpts().CPlusPlus14 && !Info.keepEvaluatingAfterFailure())
       return Error(UO);
 
     LValue LVal;
@@ -4569,7 +4640,7 @@ bool LValueExprEvaluator::VisitUnaryImag(const UnaryOperator *E) {
 }
 
 bool LValueExprEvaluator::VisitUnaryPreIncDec(const UnaryOperator *UO) {
-  if (!Info.getLangOpts().CPlusPlus1y && !Info.keepEvaluatingAfterFailure())
+  if (!Info.getLangOpts().CPlusPlus14 && !Info.keepEvaluatingAfterFailure())
     return Error(UO);
 
   if (!this->Visit(UO->getSubExpr()))
@@ -4582,7 +4653,7 @@ bool LValueExprEvaluator::VisitUnaryPreIncDec(const UnaryOperator *UO) {
 
 bool LValueExprEvaluator::VisitCompoundAssignOperator(
     const CompoundAssignOperator *CAO) {
-  if (!Info.getLangOpts().CPlusPlus1y && !Info.keepEvaluatingAfterFailure())
+  if (!Info.getLangOpts().CPlusPlus14 && !Info.keepEvaluatingAfterFailure())
     return Error(CAO);
 
   APValue RHS;
@@ -4604,7 +4675,7 @@ bool LValueExprEvaluator::VisitCompoundAssignOperator(
 }
 
 bool LValueExprEvaluator::VisitBinAssign(const BinaryOperator *E) {
-  if (!Info.getLangOpts().CPlusPlus1y && !Info.keepEvaluatingAfterFailure())
+  if (!Info.getLangOpts().CPlusPlus14 && !Info.keepEvaluatingAfterFailure())
     return Error(E);
 
   APValue NewVal;
@@ -5162,7 +5233,7 @@ bool RecordExprEvaluator::VisitCXXConstructExpr(const CXXConstructExpr *E) {
   if (ZeroInit && !ZeroInitialization(E))
     return false;
 
-  ArrayRef<const Expr *> Args(E->getArgs(), E->getNumArgs());
+  auto Args = llvm::makeArrayRef(E->getArgs(), E->getNumArgs());
   return HandleConstructorCall(E->getExprLoc(), This, Args,
                                cast<CXXConstructorDecl>(Definition), Info,
                                Result);
@@ -5641,7 +5712,7 @@ bool ArrayExprEvaluator::VisitCXXConstructExpr(const CXXConstructExpr *E,
       return false;
   }
 
-  ArrayRef<const Expr *> Args(E->getArgs(), E->getNumArgs());
+  auto Args = llvm::makeArrayRef(E->getArgs(), E->getNumArgs());
   return HandleConstructorCall(E->getExprLoc(), Subobject, Args,
                                cast<CXXConstructorDecl>(Definition),
                                Info, *Value);
@@ -6087,6 +6158,7 @@ bool IntExprEvaluator::VisitCallExpr(const CallExpr *E) {
     return Success(Operand, E);
   }
 
+  case Builtin::BI__builtin_assume_aligned:
   case Builtin::BI__builtin_expect:
     return Visit(E->getArg(0));
 
@@ -7962,6 +8034,7 @@ public:
     default:
       return ExprEvaluatorBaseTy::VisitCallExpr(E);
     case Builtin::BI__assume:
+    case Builtin::BI__builtin_assume:
       // The argument is not evaluated!
       return true;
     }

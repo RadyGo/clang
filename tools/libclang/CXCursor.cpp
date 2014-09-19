@@ -57,6 +57,7 @@ static CXCursorKind GetCursorKind(const Attr *A) {
     case attr::CUDADevice: return CXCursor_CUDADeviceAttr;
     case attr::CUDAGlobal: return CXCursor_CUDAGlobalAttr;
     case attr::CUDAHost: return CXCursor_CUDAHostAttr;
+    case attr::CUDAShared: return CXCursor_CUDASharedAttr;
   }
 
   return CXCursor_UnexposedAttr;
@@ -526,6 +527,9 @@ CXCursor cxcursor::MakeCXCursor(const Stmt *S, const Decl *Parent,
   case Stmt::OMPForDirectiveClass:
     K = CXCursor_OMPForDirective;
     break;
+  case Stmt::OMPForSimdDirectiveClass:
+    K = CXCursor_OMPForSimdDirective;
+    break;
   case Stmt::OMPSectionsDirectiveClass:
     K = CXCursor_OMPSectionsDirective;
     break;
@@ -567,6 +571,9 @@ CXCursor cxcursor::MakeCXCursor(const Stmt *S, const Decl *Parent,
     break;
   case Stmt::OMPAtomicDirectiveClass:
     K = CXCursor_OMPAtomicDirective;
+    break;
+  case Stmt::OMPTargetDirectiveClass:
+    K = CXCursor_OMPTargetDirective;
     break;
   }
 

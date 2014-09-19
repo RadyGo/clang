@@ -735,8 +735,7 @@ static bool LookupDirect(Sema &S, LookupResult &R, const DeclContext *DC) {
     // FIXME: Calling convention!
     FunctionProtoType::ExtProtoInfo EPI = ConvProto->getExtProtoInfo();
     EPI.ExtInfo = EPI.ExtInfo.withCallingConv(CC_C);
-    EPI.ExceptionSpecType = EST_None;
-    EPI.NumExceptions = 0;
+    EPI.ExceptionSpec = EST_None;
     QualType ExpectedType
       = R.getSema().Context.getFunctionType(R.getLookupName().getCXXNameType(),
                                             None, EPI);
@@ -3856,8 +3855,8 @@ void TypoCorrectionConsumer::NamespaceSpecifierSet::addNameSpecifier(
     SmallVector<const IdentifierInfo*, 4> NewNameSpecifierIdentifiers;
     getNestedNameSpecifierIdentifiers(NNS, NewNameSpecifierIdentifiers);
     NumSpecifiers = llvm::ComputeEditDistance(
-        ArrayRef<const IdentifierInfo *>(CurNameSpecifierIdentifiers),
-        ArrayRef<const IdentifierInfo *>(NewNameSpecifierIdentifiers));
+        llvm::makeArrayRef(CurNameSpecifierIdentifiers),
+        llvm::makeArrayRef(NewNameSpecifierIdentifiers));
   }
 
   isSorted = false;

@@ -1622,15 +1622,14 @@ QualType ASTNodeImporter::VisitFunctionProtoType(const FunctionProtoType *T) {
   ToEPI.HasTrailingReturn = FromEPI.HasTrailingReturn;
   ToEPI.TypeQuals = FromEPI.TypeQuals;
   ToEPI.RefQualifier = FromEPI.RefQualifier;
-  ToEPI.NumExceptions = ExceptionTypes.size();
-  ToEPI.Exceptions = ExceptionTypes.data();
-  ToEPI.ConsumedParameters = FromEPI.ConsumedParameters;
-  ToEPI.ExceptionSpecType = FromEPI.ExceptionSpecType;
-  ToEPI.NoexceptExpr = Importer.Import(FromEPI.NoexceptExpr);
-  ToEPI.ExceptionSpecDecl = cast_or_null<FunctionDecl>(
-                                Importer.Import(FromEPI.ExceptionSpecDecl));
-  ToEPI.ExceptionSpecTemplate = cast_or_null<FunctionDecl>(
-                                Importer.Import(FromEPI.ExceptionSpecTemplate));
+  ToEPI.ExceptionSpec.Type = FromEPI.ExceptionSpec.Type;
+  ToEPI.ExceptionSpec.Exceptions = ExceptionTypes;
+  ToEPI.ExceptionSpec.NoexceptExpr =
+      Importer.Import(FromEPI.ExceptionSpec.NoexceptExpr);
+  ToEPI.ExceptionSpec.SourceDecl = cast_or_null<FunctionDecl>(
+      Importer.Import(FromEPI.ExceptionSpec.SourceDecl));
+  ToEPI.ExceptionSpec.SourceTemplate = cast_or_null<FunctionDecl>(
+      Importer.Import(FromEPI.ExceptionSpec.SourceTemplate));
 
   return Importer.getToContext().getFunctionType(ToResultType, ArgTypes, ToEPI);
 }
@@ -2712,8 +2711,9 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
     // FunctionDecl that we are importing the FunctionProtoType for.
     // To avoid an infinite recursion when importing, create the FunctionDecl
     // with a simplified function type and update it afterwards.
-    if (FromEPI.ExceptionSpecDecl || FromEPI.ExceptionSpecTemplate ||
-        FromEPI.NoexceptExpr) {
+    if (FromEPI.ExceptionSpec.SourceDecl ||
+        FromEPI.ExceptionSpec.SourceTemplate ||
+        FromEPI.ExceptionSpec.NoexceptExpr) {
       FunctionProtoType::ExtProtoInfo DefaultEPI;
       FromTy = Importer.getFromContext().getFunctionType(
           FromFPT->getReturnType(), FromFPT->getParamTypes(), DefaultEPI);
@@ -4919,10 +4919,11 @@ FileID ASTImporter::Import(FileID FromID) {
     // FIXME: We want to re-use the existing MemoryBuffer!
     const llvm::MemoryBuffer *
         FromBuf = Cache->getBuffer(FromContext.getDiagnostics(), FromSM);
-    llvm::MemoryBuffer *ToBuf
+    std::unique_ptr<llvm::MemoryBuffer> ToBuf
       = llvm::MemoryBuffer::getMemBufferCopy(FromBuf->getBuffer(),
                                              FromBuf->getBufferIdentifier());
-    ToID = ToSM.createFileID(ToBuf, FromSLoc.getFile().getFileCharacteristic());
+    ToID = ToSM.createFileID(std::move(ToBuf),
+                             FromSLoc.getFile().getFileCharacteristic());
   }
   
   

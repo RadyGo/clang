@@ -1782,16 +1782,9 @@ private:
   void ParseStructUnionBody(SourceLocation StartLoc, unsigned TagType,
                             Decl *TagDecl);
 
-  struct FieldCallback {
-    virtual void invoke(ParsingFieldDeclarator &Field) = 0;
-    virtual ~FieldCallback() {}
-
-  private:
-    virtual void _anchor();
-  };
-  struct ObjCPropertyCallback;
-
-  void ParseStructDeclaration(ParsingDeclSpec &DS, FieldCallback &Callback);
+  void ParseStructDeclaration(
+      ParsingDeclSpec &DS,
+      llvm::function_ref<void(ParsingFieldDeclarator &)> FieldsCallback);
 
   bool isDeclarationSpecifier(bool DisambiguatingWithExpression = false);
   bool isTypeSpecifierQualifier();
@@ -2164,7 +2157,8 @@ private:
   VirtSpecifiers::Specifier isCXX11VirtSpecifier() const {
     return isCXX11VirtSpecifier(Tok);
   }
-  void ParseOptionalCXX11VirtSpecifierSeq(VirtSpecifiers &VS, bool IsInterface);
+  void ParseOptionalCXX11VirtSpecifierSeq(VirtSpecifiers &VS, bool IsInterface,
+                                          SourceLocation FriendLoc);
 
   bool isCXX11FinalKeyword() const;
 

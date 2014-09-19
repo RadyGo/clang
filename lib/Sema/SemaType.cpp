@@ -763,7 +763,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     // is inferred from the return statements inside the block.
     // The declspec is always missing in a lambda expr context; it is either
     // specified with a trailing return type or inferred.
-    if (S.getLangOpts().CPlusPlus1y &&
+    if (S.getLangOpts().CPlusPlus14 &&
         declarator.getContext() == Declarator::LambdaExprContext) {
       // In C++1y, a lambda's implicit return type is 'auto'.
       Result = Context.getAutoDeductType();
@@ -1746,7 +1746,7 @@ bool Sema::CheckFunctionReturnType(QualType T, SourceLocation Loc) {
   }
 
   // Functions cannot return half FP.
-  if (T->isHalfType()) {
+  if (T->isHalfType() && !getLangOpts().HalfArgsAndReturns) {
     Diag(Loc, diag::err_parameters_retval_cannot_have_fp16_type) << 1 <<
       FixItHint::CreateInsertion(Loc, "*");
     return true;
@@ -1776,7 +1776,7 @@ QualType Sema::BuildFunctionType(QualType T,
     if (ParamType->isVoidType()) {
       Diag(Loc, diag::err_param_with_void_type);
       Invalid = true;
-    } else if (ParamType->isHalfType()) {
+    } else if (ParamType->isHalfType() && !getLangOpts().HalfArgsAndReturns) {
       // Disallow half FP arguments.
       Diag(Loc, diag::err_parameters_retval_cannot_have_fp16_type) << 0 <<
         FixItHint::CreateInsertion(Loc, "*");
@@ -2175,7 +2175,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
       Error = 0;  
       break;
     case Declarator::LambdaExprParameterContext:
-      if (!(SemaRef.getLangOpts().CPlusPlus1y 
+      if (!(SemaRef.getLangOpts().CPlusPlus14 
               && D.getDeclSpec().getTypeSpecType() == DeclSpec::TST_auto))
         Error = 14;
       break;
@@ -2208,11 +2208,11 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
       Error = 10; // Type alias
       break;
     case Declarator::TrailingReturnContext:
-      if (!SemaRef.getLangOpts().CPlusPlus1y)
+      if (!SemaRef.getLangOpts().CPlusPlus14)
         Error = 11; // Function return type
       break;
     case Declarator::ConversionIdContext:
-      if (!SemaRef.getLangOpts().CPlusPlus1y)
+      if (!SemaRef.getLangOpts().CPlusPlus14)
         Error = 12; // conversion-type-id
       break;
     case Declarator::TypeNameContext:
@@ -2697,7 +2697,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         // and not, for instance, a pointer to a function.
         if (D.getDeclSpec().containsPlaceholderType() &&
             !FTI.hasTrailingReturnType() && chunkIndex == 0 &&
-            !S.getLangOpts().CPlusPlus1y) {
+            !S.getLangOpts().CPlusPlus14) {
           S.Diag(D.getDeclSpec().getTypeSpecTypeLoc(),
                  D.getDeclSpec().getTypeSpecType() == DeclSpec::TST_auto
                      ? diag::err_auto_missing_trailing_return
@@ -2751,7 +2751,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
             S.Diag(D.getIdentifierLoc(), diag::err_opencl_half_return) << T;
             D.setInvalidType(true);
           } 
-        } else {
+        } else if (!S.getLangOpts().HalfArgsAndReturns) {
           S.Diag(D.getIdentifierLoc(),
             diag::err_parameters_retval_cannot_have_fp16_type) << 1;
           D.setInvalidType(true);
@@ -2941,7 +2941,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
                 D.setInvalidType();
                 Param->setInvalidDecl();
               }
-            } else {
+            } else if (!S.getLangOpts().HalfArgsAndReturns) {
               S.Diag(Param->getLocation(),
                 diag::err_parameters_retval_cannot_have_fp16_type) << 0;
               D.setInvalidType();
@@ -2994,7 +2994,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
                                       DynamicExceptionRanges,
                                       NoexceptExpr,
                                       Exceptions,
-                                      EPI);
+                                      EPI.ExceptionSpec);
 
         T = Context.getFunctionType(T, ParamTys, EPI);
       }
@@ -4564,23 +4564,12 @@ static bool handleFunctionTypeAttr(TypeProcessingState &state,
     }
   }
 
-  // Diagnose the use of X86 fastcall on unprototyped functions.
-  if (CC == CC_X86FastCall) {
-    if (isa<FunctionNoProtoType>(fn)) {
-      S.Diag(attr.getLoc(), diag::err_cconv_knr)
-        << FunctionType::getNameForCallConv(CC);
-      attr.setInvalid();
-      return true;
-    }
-
-    // Also diagnose fastcall with regparm.
-    if (fn->getHasRegParm()) {
-      S.Diag(attr.getLoc(), diag::err_attributes_are_not_compatible)
-        << "regparm"
-        << FunctionType::getNameForCallConv(CC);
-      attr.setInvalid();
-      return true;
-    }
+  // Also diagnose fastcall with regparm.
+  if (CC == CC_X86FastCall && fn->getHasRegParm()) {
+    S.Diag(attr.getLoc(), diag::err_attributes_are_not_compatible)
+        << "regparm" << FunctionType::getNameForCallConv(CC_X86FastCall);
+    attr.setInvalid();
+    return true;
   }
 
   // Modify the CC from the wrapped function type, wrap it all back, and then
@@ -5173,14 +5162,6 @@ static void assignInheritanceModel(Sema &S, CXXRecordDecl *RD) {
         S.ImplicitMSInheritanceAttrLoc.isValid()
             ? S.ImplicitMSInheritanceAttrLoc
             : RD->getSourceRange()));
-  }
-
-  if (RD->hasDefinition()) {
-    // Assign inheritance models to all of the base classes, because now we can
-    // form pointers to members of base classes without calling
-    // RequireCompleteType on the pointer to member of the base class type.
-    for (const CXXBaseSpecifier &BS : RD->bases())
-      assignInheritanceModel(S, BS.getType()->getAsCXXRecordDecl());
   }
 }
 

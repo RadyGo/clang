@@ -33,6 +33,43 @@ The ``.clang-format`` file uses YAML format:
   # A comment.
   ...
 
+The configuration file can consist of several sections each having different
+``Language:`` parameter denoting the programming language this section of the
+configuration is targeted at. See the description of the **Language** option
+below for the list of supported languages. The first section may have no
+language set, it will set the default style options for all lanugages.
+Configuration sections for specific language will override options set in the
+default section.
+
+When :program:`clang-format` formats a file, it auto-detects the language using
+the file name. When formatting standard input or a file that doesn't have the
+extension corresponding to its language, ``-assume-filename=`` option can be
+used to override the file name :program:`clang-format` uses to detect the
+language.
+
+An example of a configuration file for multiple languages:
+
+.. code-block:: yaml
+
+  ---
+  # We'll use defaults from the LLVM style, but with 4 columns indentation.
+  BasedOnStyle: LLVM
+  IndentWidth: 4
+  ---
+  Language: Cpp
+  # Force pointers to the type for C++.
+  DerivePointerAlignment: false
+  PointerAlignment: Left
+  ---
+  Language: JavaScript
+  # Use 100 columns for JS.
+  ColumnLimit: 100
+  ---
+  Language: Proto
+  # Don't format .proto files.
+  DisableFormat: true
+  ...
+
 An easy way to get a valid ``.clang-format`` file containing all configuration
 options of a certain predefined style is:
 
@@ -111,6 +148,9 @@ the configuration (without a prefix: ``Auto``).
 
   E.g., this allows ``if (a) { return; }`` to be put on a single line.
 
+**AllowShortCaseLabelsOnASingleLine** (``bool``)
+  If ``true``, short case labels will be contracted to a single line.
+
 **AllowShortFunctionsOnASingleLine** (``ShortFunctionStyle``)
   Dependent on the value, ``int f() { return 0; }`` can be put
   on a single line.
@@ -133,6 +173,13 @@ the configuration (without a prefix: ``Auto``).
   If ``true``, ``while (true) continue;`` can be put on a
   single line.
 
+**AlwaysBreakAfterDefinitionReturnType** (``bool``)
+  If ``true``, always break after function definition return types.
+
+  More truthfully called 'break before the identifier following the type
+  in a function definition'. PenaltyReturnTypeOnItsOwnLine becomes
+  irrelevant.
+
 **AlwaysBreakBeforeMultilineStrings** (``bool``)
   If ``true``, always break before multiline string literals.
 
@@ -144,8 +191,18 @@ the configuration (without a prefix: ``Auto``).
   If ``false``, a function call's or function definition's parameters
   will either all be on the same line or will have one line each.
 
-**BreakBeforeBinaryOperators** (``bool``)
-  If ``true``, binary operators will be placed after line breaks.
+**BreakBeforeBinaryOperators** (``BinaryOperatorStyle``)
+  The way to wrap binary operators.
+
+  Possible values:
+
+  * ``BOS_None`` (in configuration: ``None``)
+    Break after operators.
+  * ``BOS_NonAssignment`` (in configuration: ``NonAssignment``)
+    Break before operators that aren't assignments.
+  * ``BOS_All`` (in configuration: ``All``)
+    Break before operators.
+
 
 **BreakBeforeBraces** (``BraceBreakingStyle``)
   The brace breaking style to use.
@@ -158,7 +215,7 @@ the configuration (without a prefix: ``Auto``).
     Like ``Attach``, but break before braces on function, namespace and
     class definitions.
   * ``BS_Stroustrup`` (in configuration: ``Stroustrup``)
-    Like ``Attach``, but break before function definitions.
+    Like ``Attach``, but break before function definitions, and 'else'.
   * ``BS_Allman`` (in configuration: ``Allman``)
     Always break before braces.
   * ``BS_GNU`` (in configuration: ``GNU``)
@@ -213,7 +270,7 @@ the configuration (without a prefix: ``Auto``).
 
 **DerivePointerAlignment** (``bool``)
   If ``true``, analyze the formatted file for the most common
-  alignment of & and \*. ``PointerAlignment`` is then used only as fallback.
+  alignment of & and ``*``. ``PointerAlignment`` is then used only as fallback.
 
 **DisableFormat** (``bool``)
   Disables formatting at all.
@@ -330,6 +387,9 @@ the configuration (without a prefix: ``Auto``).
     Align pointer in the middle.
 
 
+**SpaceAfterCStyleCast** (``bool``)
+  If ``true``, a space may be inserted after C style casts.
+
 **SpaceBeforeAssignmentOperators** (``bool``)
   If ``false``, spaces will be removed before assignment operators.
 
@@ -373,6 +433,9 @@ the configuration (without a prefix: ``Auto``).
 
 **SpacesInParentheses** (``bool``)
   If ``true``, spaces will be inserted after '(' and before ')'.
+
+**SpacesInSquareBrackets** (``bool``)
+  If ``true``, spaces will be inserted after '[' and before ']'.
 
 **Standard** (``LanguageStandard``)
   Format compatible with this standard, e.g. use
