@@ -1,3 +1,4 @@
+//===------ SemaDeclCXX.cpp - Semantic Analysis for C++ Declarations ------===//
 //
 //                     The LLVM Compiler Infrastructure
 //

@@ -143,10 +143,42 @@ struct A7_with_copy_assign {
   __device__ A7_with_copy_assign& operator=(const A7_with_copy_assign&) {}
 };
 
-struct B7_with_copy_assign {
+struct B7_with_copy_assign : A7_with_copy_assign {
 };
 
+// expected-note@-3 {{copy assignment operator of 'B7_with_copy_assign' is implicitly deleted}}
+
 void hostfoo7() {
-  A7_with_copy_assign a1, a2;
-  a1 = a2;
+  B7_with_copy_assign b1, b2;
+  b1 = b2; // expected-error {{object of type 'B7_with_copy_assign' cannot be assigned because its copy assignment operator is implicitly deleted}}
+}
+
+//------------------------------------------------------------------------------
+// Test 8: move assignment operator
+
+// definitions for std::move
+namespace std {
+inline namespace foo {
+template <class T> struct remove_reference { typedef T type; };
+template <class T> struct remove_reference<T&> { typedef T type; };
+template <class T> struct remove_reference<T&&> { typedef T type; };
+
+template <class T> typename remove_reference<T>::type&& move(T&& t);
+}
+}
+
+struct A8_with_move_assign {
+  A8_with_move_assign() {}
+  __device__ A8_with_move_assign& operator=(A8_with_move_assign&&) {}
+  __device__ A8_with_move_assign& operator=(const A8_with_move_assign&) {}
+};
+
+struct B8_with_move_assign : A8_with_move_assign {
+};
+
+// expected-note@-3 {{copy assignment operator of 'B8_with_move_assign' is implicitly deleted because base class 'A8_with_move_assign' has no copy assignment operator}}
+
+void hostfoo8() {
+  B8_with_move_assign b1, b2;
+  b1 = std::move(b2); // expected-error {{object of type 'B8_with_move_assign' cannot be assigned because its copy assignment operator is implicitly deleted}}
 }
