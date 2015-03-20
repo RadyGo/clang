@@ -77,11 +77,19 @@ NamedDecl *Parser::ParseCXXInlineMethodDef(AccessSpecifier AS,
                       : diag::ext_deleted_function);
       Actions.SetDeclDeleted(FnD, KWLoc);
       Delete = true;
+      if (auto *DeclAsFunction = dyn_cast<FunctionDecl>(FnD)) {
+        SourceLocation DeleteEndLoc = KWLoc.getLocWithOffset(5);
+        DeclAsFunction->setRangeEnd(DeleteEndLoc);
+      }
     } else if (TryConsumeToken(tok::kw_default, KWLoc)) {
       Diag(KWLoc, getLangOpts().CPlusPlus11
                       ? diag::warn_cxx98_compat_defaulted_function
                       : diag::ext_defaulted_function);
       Actions.SetDeclDefaulted(FnD, KWLoc);
+      if (auto *DeclAsFunction = dyn_cast<FunctionDecl>(FnD)) {
+        SourceLocation DefaultEndLoc = KWLoc.getLocWithOffset(6);
+        DeclAsFunction->setRangeEnd(DefaultEndLoc);
+      }
     } else {
       llvm_unreachable("function definition after = not 'delete' or 'default'");
     }

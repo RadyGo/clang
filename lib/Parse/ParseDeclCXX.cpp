@@ -2330,12 +2330,6 @@ void Parser::ParseCXXClassMemberDeclaration(AccessSpecifier AS,
 
     FunctionDefinitionKind DefinitionKind = FDK_Declaration;
 
-    // For explicitly deleted or defaulted declarations, we want to preserve the
-    // full source location of the declaration (including the "= delete" part).
-    // DeleteOrDefaultEndLoc saves this actual end location (end of the 'delete'
-    // or 'default' token).
-    SourceLocation DeleteOrDefaultEndLoc;
-
     // function-definition:
     //
     // In C++11, a non-function declarator followed by an open brace is a
@@ -2348,16 +2342,10 @@ void Parser::ParseCXXClassMemberDeclaration(AccessSpecifier AS,
         DefinitionKind = FDK_Definition;
       } else if (Tok.is(tok::equal)) {
         const Token &KW = NextToken();
-        if (KW.is(tok::kw_default)) {
+        if (KW.is(tok::kw_default))
           DefinitionKind = FDK_Defaulted;
-          DeleteOrDefaultEndLoc =
-              KW.getLocation().getLocWithOffset(KW.getLength() - 1);
-        }
-        else if (KW.is(tok::kw_delete)) {
+        else if (KW.is(tok::kw_delete))
           DefinitionKind = FDK_Deleted;
-          DeleteOrDefaultEndLoc =
-              KW.getLocation().getLocWithOffset(KW.getLength() - 1);
-        }
       }
     }
 
@@ -2400,14 +2388,6 @@ void Parser::ParseCXXClassMemberDeclaration(AccessSpecifier AS,
         }
         for (unsigned i = 0, ni = LateParsedAttrs.size(); i < ni; ++i) {
           LateParsedAttrs[i]->addDecl(FunDecl);
-        }
-
-        // If the declaration is explicitly defaulted or deleted, fix up its end
-        // location to include the defaulting/deleting.
-        if (DefinitionKind == FDK_Defaulted || DefinitionKind == FDK_Deleted) {
-          if (auto *DeclAsFunction = dyn_cast<FunctionDecl>(FunDecl)) {
-            DeclAsFunction->setRangeEnd(DeleteOrDefaultEndLoc);
-          }
         }
       }
       LateParsedAttrs.clear();

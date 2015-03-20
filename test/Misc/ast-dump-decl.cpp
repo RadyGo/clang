@@ -139,7 +139,6 @@ class TestCXXDestructorDecl {
 // CHECK-NEXT:   CompoundStmt
 
 // Test that the range of a defaulted members is computed correctly.
-// FIXME: This should include the "= default".
 class TestMemberRanges {
 public:
   TestMemberRanges() = default;
