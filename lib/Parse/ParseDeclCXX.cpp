@@ -2329,7 +2329,6 @@ void Parser::ParseCXXClassMemberDeclaration(AccessSpecifier AS,
     }
 
     FunctionDefinitionKind DefinitionKind = FDK_Declaration;
-
     // function-definition:
     //
     // In C++11, a non-function declarator followed by an open brace is a

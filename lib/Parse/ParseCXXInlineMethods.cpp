@@ -78,6 +78,7 @@ NamedDecl *Parser::ParseCXXInlineMethodDef(AccessSpecifier AS,
       Actions.SetDeclDeleted(FnD, KWLoc);
       Delete = true;
       if (auto *DeclAsFunction = dyn_cast<FunctionDecl>(FnD)) {
+        // The end of this decl has to point to the end of the 'delete' keyword
         SourceLocation DeleteEndLoc = KWLoc.getLocWithOffset(5);
         DeclAsFunction->setRangeEnd(DeleteEndLoc);
       }
@@ -88,6 +89,7 @@ NamedDecl *Parser::ParseCXXInlineMethodDef(AccessSpecifier AS,
       Actions.SetDeclDefaulted(FnD, KWLoc);
       if (auto *DeclAsFunction = dyn_cast<FunctionDecl>(FnD)) {
         SourceLocation DefaultEndLoc = KWLoc.getLocWithOffset(6);
+        // The end of this decl has to point to the end of the 'default' keyword
         DeclAsFunction->setRangeEnd(DefaultEndLoc);
       }
     } else {
