@@ -71,6 +71,7 @@ NamedDecl *Parser::ParseCXXInlineMethodDef(AccessSpecifier AS,
 
     bool Delete = false;
     SourceLocation KWLoc;
+    SourceLocation KWEndLoc = Tok.getEndLoc().getLocWithOffset(-1);
     if (TryConsumeToken(tok::kw_delete, KWLoc)) {
       Diag(KWLoc, getLangOpts().CPlusPlus11
                       ? diag::warn_cxx98_compat_deleted_function
@@ -79,7 +80,7 @@ NamedDecl *Parser::ParseCXXInlineMethodDef(AccessSpecifier AS,
       Delete = true;
       if (auto *DeclAsFunction = dyn_cast<FunctionDecl>(FnD)) {
         // The end of this decl has to point to the end of the 'delete' keyword
-        SourceLocation DeleteEndLoc = KWLoc.getLocWithOffset(5);
+        SourceLocation DeleteEndLoc = KWEndLoc;
         DeclAsFunction->setRangeEnd(DeleteEndLoc);
       }
     } else if (TryConsumeToken(tok::kw_default, KWLoc)) {
@@ -88,7 +89,7 @@ NamedDecl *Parser::ParseCXXInlineMethodDef(AccessSpecifier AS,
                       : diag::ext_defaulted_function);
       Actions.SetDeclDefaulted(FnD, KWLoc);
       if (auto *DeclAsFunction = dyn_cast<FunctionDecl>(FnD)) {
-        SourceLocation DefaultEndLoc = KWLoc.getLocWithOffset(6);
+        SourceLocation DefaultEndLoc = KWEndLoc;
         // The end of this decl has to point to the end of the 'default' keyword
         DeclAsFunction->setRangeEnd(DefaultEndLoc);
       }
