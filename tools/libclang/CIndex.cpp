@@ -2031,7 +2031,17 @@ void OMPClauseEnqueue::VisitOMPReductionClause(const OMPReductionClause *C) {
 }
 void OMPClauseEnqueue::VisitOMPLinearClause(const OMPLinearClause *C) {
   VisitOMPClauseList(C);
+  for (const auto *E : C->inits()) {
+    Visitor->AddStmt(E);
+  }
+  for (const auto *E : C->updates()) {
+    Visitor->AddStmt(E);
+  }
+  for (const auto *E : C->finals()) {
+    Visitor->AddStmt(E);
+  }
   Visitor->AddStmt(C->getStep());
+  Visitor->AddStmt(C->getCalcStep());
 }
 void OMPClauseEnqueue::VisitOMPAlignedClause(const OMPAlignedClause *C) {
   VisitOMPClauseList(C);
@@ -2043,6 +2053,15 @@ void OMPClauseEnqueue::VisitOMPCopyinClause(const OMPCopyinClause *C) {
 void
 OMPClauseEnqueue::VisitOMPCopyprivateClause(const OMPCopyprivateClause *C) {
   VisitOMPClauseList(C);
+  for (auto *E : C->source_exprs()) {
+    Visitor->AddStmt(E);
+  }
+  for (auto *E : C->destination_exprs()) {
+    Visitor->AddStmt(E);
+  }
+  for (auto *E : C->assignment_ops()) {
+    Visitor->AddStmt(E);
+  }
 }
 void OMPClauseEnqueue::VisitOMPFlushClause(const OMPFlushClause *C) {
   VisitOMPClauseList(C);
